@@ -1,0 +1,135 @@
+@using DiAvto.Web.Features.Formatting
+
+<article class="car-card @TierClass">
+    <a class="car-card-media" href="/cars/@Listing.Id" aria-label="Подробнее: @DisplayTitle">
+        <img src="@MainPhoto" alt="@DisplayTitle" loading="lazy" referrerpolicy="no-referrer"
+             onerror="this.onerror=null;this.src='/img/car-placeholder.svg';" />
+
+        @if (Tier is not null)
+        {
+            <span class="car-rank @TierBadgeClass">
+                <span class="car-rank-dot"></span>
+                @(Tier == ResultTier.Cheapest ? "Минимальная цена" : "Максимальная цена")
+                @if (Rank is not null)
+                {
+                    <b>#@Rank</b>
+                }
+            </span>
+        }
+
+        @if (Listing.PhotoCount > 1)
+        {
+            <span class="car-photo-count">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l1.5-2h5L16 7h4v12H4z" /><circle cx="12" cy="12.5" r="3.2" /></svg>
+                @Listing.PhotoCount
+            </span>
+        }
+    </a>
+
+    <div class="car-card-body">
+        <div class="car-card-topline">
+            <span class="car-brand-label">@(CarSpecTranslator.TranslateBrand(Listing.BrandName) is { Length: > 0 } brand ? brand : "Автомобиль из Китая")</span>
+            @if (Listing.Year is not null)
+            {
+                <span class="car-year">@Listing.Year</span>
+            }
+        </div>
+
+        <h3 class="car-card-title">
+            <a href="/cars/@Listing.Id">@DisplayTitle</a>
+        </h3>
+
+        <div class="car-meta-row">
+            <span>@DisplayFormat.Mileage(Listing.MileageKm)</span>
+            @if (!string.IsNullOrWhiteSpace(Listing.CityName))
+            {
+                <span>@CarSpecTranslator.Translate(Listing.CityName)</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Listing.Displacement))
+            {
+                <span>@Listing.Displacement</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Listing.Gearbox))
+            {
+                <span>@CarSpecTranslator.Translate(Listing.Gearbox)</span>
+            }
+        </div>
+
+        <div class="car-card-footer">
+            <div class="car-price-block">
+                <strong>@DisplayFormat.Cny(PriceCny ?? Listing.PriceCny)</strong>
+                @if (PriceRub is not null)
+                {
+                    <span>@DisplayFormat.Rub(PriceRub.Value)</span>
+                }
+                else
+                {
+                    <span>цена в Китае</span>
+                }
+            </div>
+
+            <a class="car-details-link" href="/cars/@Listing.Id">
+                Подробнее
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            </a>
+        </div>
+
+        @if (ShowSource && Listing.SourceSite is not null)
+        {
+            <div class="car-source">
+                <span>Источник: @Listing.SourceSite.Name</span>
+                @if (!string.IsNullOrWhiteSpace(Listing.PublicUrl))
+                {
+                    <a href="@Listing.PublicUrl" target="_blank" rel="noopener noreferrer">Оригинал ↗</a>
+                }
+            </div>
+        }
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public CarListing Listing { get; set; } = null!;
+
+    [Parameter]
+    public ResultTier? Tier { get; set; }
+
+    [Parameter]
+    public int? Rank { get; set; }
+
+    [Parameter]
+    public decimal? PriceCny { get; set; }
+
+    [Parameter]
+    public decimal? PriceRub { get; set; }
+
+    [Parameter]
+    public bool ShowSource { get; set; } = true;
+
+    private string MainPhoto =>
+        Listing.Photos.OrderBy(x => x.SortOrder).Select(x => x.Url).FirstOrDefault()
+        ?? Listing.ImageUrl
+        ?? "/img/car-placeholder.svg";
+
+    private string DisplayTitle => CarSpecTranslator.BuildTitle(
+        Listing.BrandName,
+        Listing.SeriesName,
+        Listing.Year,
+        Listing.Displacement,
+        Listing.Gearbox,
+        Listing.Title);
+
+    private string TierClass => Tier switch
+    {
+        ResultTier.Cheapest => "car-card-cheap",
+        ResultTier.MostExpensive => "car-card-expensive",
+        _ => ""
+    };
+
+    private string TierBadgeClass => Tier switch
+    {
+        ResultTier.Cheapest => "car-rank-cheap",
+        ResultTier.MostExpensive => "car-rank-expensive",
+        _ => ""
+    };
+}

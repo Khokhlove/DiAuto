@@ -1,0 +1,170 @@
+@page "/admin/listings"
+@attribute [Authorize(Policy = "AdminPage.listings")]
+@rendermode InteractiveServer
+@inject ApplicationDbContext Db
+@inject ListingService ListingService
+
+<PageTitle>Автомобили — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Данные" Title="Автомобили"
+            Description="Все объявления, которые уже попадали в подборки. Детали можно обновить из источника.">
+    <Actions>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/catalog">Каталог</a>
+        <a class="btn btn-primary btn-sm" href="/#search" target="_blank">Запустить поиск</a>
+    </Actions>
+</PageHeader>
+
+<section class="panel">
+    <div class="filter-bar filter-bar-wrap">
+        <input class="form-control" placeholder="Название, бренд, модель или ID…" @bind="_search" @onkeydown="OnSearchKeyDown" />
+        <select class="form-select" @bind="_sourceId">
+            <option value="0">Все источники</option>
+            @foreach (var source in _sources)
+            {
+                <option value="@source.Id">@source.Name</option>
+            }
+        </select>
+        <button class="btn btn-primary" @onclick="ApplyFiltersAsync">Применить</button>
+        <button class="btn btn-outline-secondary" @onclick="ResetFiltersAsync">Сбросить</button>
+        <span class="filter-count">Всего: @_total</span>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-block compact"><span class="spinner"></span><p>Загружаем автомобили…</p></div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table data-table-wide">
+                <thead>
+                    <tr>
+                        <th>Автомобиль</th>
+                        <th>Источник</th>
+                        <th>Год</th>
+                        <th>Пробег</th>
+                        <th>Город</th>
+                        <th>Цена</th>
+                        <th>Обновлено</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var car in _items)
+                    {
+                        <tr>
+                            <td>
+                                <div class="listing-cell">
+                                    <img src="@CarImage(car)" alt="" loading="lazy" referrerpolicy="no-referrer"
+                                         onerror="this.onerror=null;this.src='/img/car-placeholder.svg';" />
+                                    <div>
+                                        <a class="table-title" href="/admin/listings/@car.Id">@CarSpecTranslator.BuildTitle(car.BrandName, car.SeriesName, car.Year, car.Displacement, car.Gearbox, car.Title)</a>
+                                        <small class="muted mono">@car.ExternalId</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="muted">@car.SourceSite.Name</td>
+                            <td>@(car.Year?.ToString() ?? "—")</td>
+                            <td>@DisplayFormat.MileageShort(car.MileageKm)</td>
+                            <td>@(string.IsNullOrWhiteSpace(car.CityName) ? "—" : CarSpecTranslator.Translate(car.CityName))</td>
+                            <td><strong>@DisplayFormat.Cny(car.PriceCny)</strong></td>
+                            <td class="muted">@DisplayFormat.Date(car.LastFetchedAt)</td>
+                            <td class="table-actions">
+                                <a href="/admin/listings/@car.Id">Детали</a>
+                                @if (!string.IsNullOrWhiteSpace(car.PublicUrl))
+                                {
+                                    <a href="@car.PublicUrl" target="_blank">Источник ↗</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    @if (_items.Count == 0)
+                    {
+                        <tr><td colspan="8" class="table-empty">Автомобилей пока нет.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button class="btn btn-sm btn-outline-secondary" disabled="@(_page <= 1)" @onclick="PrevPageAsync">← Назад</button>
+            <span>Страница @_page из @_pageCount</span>
+            <button class="btn btn-sm btn-outline-secondary" disabled="@(_page >= _pageCount)" @onclick="NextPageAsync">Вперёд →</button>
+        </div>
+    }
+</section>
+
+@code {
+    private const int PageSize = 25;
+    private bool _loading = true;
+    private string _search = "";
+    private int _sourceId;
+    private int _page = 1;
+    private int _pageCount = 1;
+    private int _total;
+    private List<CarListing> _items = [];
+    private List<SourceSite> _sources = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _sources = await Db.SourceSites.AsNoTracking().OrderBy(x => x.Name).ToListAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var (items, total) = await ListingService.GetPagedAsync(
+            _search,
+            _sourceId == 0 ? null : _sourceId,
+            _page,
+            PageSize);
+
+        _items = items;
+        _total = total;
+        _pageCount = Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+        _page = Math.Clamp(_page, 1, _pageCount);
+        _loading = false;
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _search = "";
+        _sourceId = 0;
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task PrevPageAsync()
+    {
+        _page--;
+        await LoadAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        _page++;
+        await LoadAsync();
+    }
+
+    private async Task OnSearchKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            await ApplyFiltersAsync();
+        }
+    }
+
+    private static string CarImage(CarListing listing)
+    {
+        return listing.Photos.OrderBy(x => x.SortOrder).Select(x => x.Url).FirstOrDefault()
+               ?? listing.ImageUrl
+               ?? "/img/car-placeholder.svg";
+    }
+}

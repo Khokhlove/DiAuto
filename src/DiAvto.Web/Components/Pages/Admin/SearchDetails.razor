@@ -1,0 +1,171 @@
+@page "/admin/searches/{Id:int}"
+@attribute [Authorize(Policy = "AdminPage.searches")]
+@rendermode InteractiveServer
+@inject SearchExecutionService SearchExecutionService
+
+<PageTitle>Поиск #@Id — DiAvto · Админка</PageTitle>
+
+@if (_loading)
+{
+    <div class="loading-block"><span class="spinner spinner-lg"></span><p>Загружаем запрос…</p></div>
+}
+else if (_request is null)
+{
+    <EmptyState Title="Запрос не найден" Description="Возможно, он был удалён." Icon="🧭">
+        <a class="btn btn-primary" href="/admin/searches">К списку поисков</a>
+    </EmptyState>
+}
+else
+{
+    var cheapest = _request.Items.Where(x => x.Tier == ResultTier.Cheapest).OrderBy(x => x.Rank).ToList();
+    var expensive = _request.Items.Where(x => x.Tier == ResultTier.MostExpensive).OrderBy(x => x.Rank).ToList();
+
+    <PageHeader Eyebrow="Поиск" Title="@PageTitleText"
+                Description="@($"ID запроса: {_request.PublicId} · создан {DisplayFormat.Date(_request.CreatedAt)}")">
+        <Actions>
+            <a class="btn btn-outline-secondary btn-sm" href="/admin/searches">← Назад</a>
+            <a class="btn btn-primary btn-sm" href="/search/@_request.PublicId" target="_blank">Результаты поиска ↗</a>
+        </Actions>
+    </PageHeader>
+
+    @if (_request.Status == SearchStatus.Failed)
+    {
+        <div class="alert alert-danger">
+            <strong>Ошибка выполнения:</strong>
+            <span>@_request.ErrorMessage</span>
+        </div>
+    }
+
+    <div class="detail-summary-grid">
+        <div class="summary-item"><span>Статус</span><strong><StatusBadge Status="_request.Status" /></strong><small>@(_request.CompletedAt is null ? "—" : DisplayFormat.Date(_request.CompletedAt.Value))</small></div>
+        <div class="summary-item"><span>Результатов</span><strong>@_request.ResultCount</strong><small>карточек</small></div>
+        <div class="summary-item"><span>Курс снимка</span><strong>@DisplayFormat.RubRate(_request.ExchangeRate)</strong><small>наценка @DisplayFormat.Percent(_request.MarkupPercent)</small></div>
+        <div class="summary-item"><span>Источник</span><strong>@_request.SourceSite.Name</strong><small>@_request.SourceSite.Key</small></div>
+    </div>
+
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="eyebrow">Параметры</span><h2>Фильтры запроса</h2></div>
+        </div>
+        <div class="criteria-grid">
+            <div><span>Марка</span><strong>@_request.BrandName</strong></div>
+            <div><span>Модель</span><strong>@(_request.SeriesName is null ? "Все модели" : CarSpecTranslator.TranslateSeries(_request.SeriesName))</strong></div>
+            <div><span>Годы</span><strong>@CriteriaYears</strong></div>
+            <div><span>Цена</span><strong>@DisplayFormat.PriceRange(_request.PriceFromCny, _request.PriceToCny)</strong></div>
+            <div><span>Пробег</span><strong>@(_request.MileageMaxKm is null ? "Без ограничения" : $"до {DisplayFormat.Mileage(_request.MileageMaxKm)}")</strong></div>
+            <div><span>Создан</span><strong>@DisplayFormat.Date(_request.CreatedAt)</strong></div>
+        </div>
+
+        @if (_criteria?.BudgetPlan is { HasBudget: true } budgetPlan)
+        {
+            <div class="panel-divider"></div>
+            <BudgetBreakdownCard Plan="budgetPlan" Compact="true" />
+        }
+    </section>
+
+    @if (cheapest.Count > 0)
+    {
+        <section class="result-section">
+            <div class="result-section-head">
+                <div>
+                    <span class="tier-marker tier-marker-cheap"></span>
+                    <h2>Самые дешёвые</h2>
+                    <span class="section-count">@cheapest.Count</span>
+                </div>
+            </div>
+            <div class="car-grid">
+                @foreach (var item in cheapest)
+                {
+                    <CarCard Listing="item.CarListing" Tier="item.Tier" Rank="item.Rank" PriceCny="item.PriceCny" PriceRub="item.PriceRub" />
+                }
+            </div>
+        </section>
+    }
+
+    @if (expensive.Count > 0)
+    {
+        <section class="result-section">
+            <div class="result-section-head">
+                <div>
+                    <span class="tier-marker tier-marker-expensive"></span>
+                    <h2>Самые дорогие</h2>
+                    <span class="section-count">@expensive.Count</span>
+                </div>
+            </div>
+            <div class="car-grid">
+                @foreach (var item in expensive)
+                {
+                    <CarCard Listing="item.CarListing" Tier="item.Tier" Rank="item.Rank" PriceCny="item.PriceCny" PriceRub="item.PriceRub" />
+                }
+            </div>
+        </section>
+    }
+
+    @if (_request.Items.Count == 0)
+    {
+        <EmptyState Title="Нет результатов" Description="По этому запросу не удалось собрать карточки." Icon="🫥" />
+    }
+
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="eyebrow">Технические данные</span><h2>Снимок запроса</h2></div>
+        </div>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr><th>Тир</th><th>#</th><th>ID источника</th><th>Название</th><th>Цена, юани</th><th>Цена, рубли</th><th>Ссылка</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _request.Items.OrderBy(x => x.Tier).ThenBy(x => x.Rank))
+                    {
+                        <tr>
+                            <td>@DisplayFormat.TierRu(item.Tier)</td>
+                            <td>@item.Rank</td>
+                            <td class="mono">@item.CarListing.ExternalId</td>
+                            <td>@CarSpecTranslator.BuildTitle(item.CarListing.BrandName, item.CarListing.SeriesName, item.CarListing.Year, item.CarListing.Displacement, item.CarListing.Gearbox, item.CarListing.Title)</td>
+                            <td>@DisplayFormat.Cny(item.PriceCny)</td>
+                            <td>@DisplayFormat.Rub(item.PriceRub)</td>
+                            <td><a href="@item.CarListing.PublicUrl" target="_blank">Открыть ↗</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(_request.CriteriaJson))
+        {
+            <details class="raw-details">
+                <summary>JSON критериев</summary>
+                <pre>@_request.CriteriaJson</pre>
+            </details>
+        }
+    </section>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private bool _loading = true;
+    private SearchRequest? _request;
+    private SearchCriteria? _criteria;
+
+    private string CriteriaYears =>
+        _request?.YearFrom is null && _request?.YearTo is null
+            ? "Любые"
+            : $"{_request?.YearFrom?.ToString() ?? "…"}–{_request?.YearTo?.ToString() ?? "…"}";
+
+    private string PageTitleText =>
+        _request is null
+            ? string.Empty
+            : string.IsNullOrWhiteSpace(_request.SeriesName)
+                ? _request.BrandName
+                : $"{_request.BrandName} · {CarSpecTranslator.TranslateSeries(_request.SeriesName)}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _request = await SearchExecutionService.GetByIdAsync(Id);
+        _criteria = SearchCriteriaSerializer.TryDeserialize(_request?.CriteriaJson);
+        _loading = false;
+    }
+}

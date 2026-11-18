@@ -1,0 +1,52 @@
+@inherits LayoutComponentBase
+@inject AppSettingsService Settings
+
+<HeadContent>
+    <meta name="robots" content="noindex, nofollow" />
+</HeadContent>
+
+<div class="site-shell client-site-shell">
+    <header class="client-site-header">
+        <div class="container client-header-inner">
+            <div class="site-brand client-brand">
+                <img class="site-brand-logo" src="/logo.webp" alt="" width="44" height="32" />
+                <span class="site-brand-text">
+                    <strong>@_siteName</strong>
+                    <small>автомобили из Китая</small>
+                </span>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_contact))
+            {
+                <div class="client-header-contact">@_contact</div>
+            }
+        </div>
+    </header>
+
+    <main class="site-main">
+        @Body
+    </main>
+
+    <footer class="client-site-footer">
+        <div class="container footer-minimal">
+            <span>© @DateTime.Now.Year @_siteName · подбор и доставка автомобилей из Китая</span>
+        </div>
+    </footer>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Что-то пошло не так. Обновите страницу.
+    <a href="." class="reload">Обновить</a>
+    <span class="dismiss">×</span>
+</div>
+
+@code {
+    private string _siteName = "DiAvto";
+    private string _contact = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _siteName = await Settings.GetAsync("SiteName", "DiAvto");
+        _contact = await Settings.GetAsync("ClientCardContactText");
+    }
+}

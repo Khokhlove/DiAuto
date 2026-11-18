@@ -1,0 +1,353 @@
+@page "/card/{PublicId}"
+@layout DiAvto.Web.Components.Layout.ClientCardLayout
+@inject ClientCardService Cards
+@inject AppSettingsService Settings
+
+<PageTitle>@DisplayTitle — @_siteName</PageTitle>
+
+@if (_loading)
+{
+    <div class="container page-pad">
+        <div class="loading-block">
+            <span class="spinner spinner-lg"></span>
+            <p>Загружаем предложение…</p>
+        </div>
+    </div>
+}
+else if (_card is null)
+{
+    <div class="container page-pad">
+        <EmptyState Title="Предложение не найдено"
+                    Description="Возможно, ссылка была изменена или карточка больше не существует. Попросите менеджера отправить актуальную ссылку."
+                    Icon="🔎" />
+    </div>
+}
+else if (!_card.IsActive)
+{
+    <div class="container page-pad">
+        <EmptyState Title="Предложение недоступно"
+                    Description="Эта карточка была отключена менеджером. Свяжитесь с нами, чтобы получить актуальное предложение."
+                    Icon="🔒">
+            @if (!string.IsNullOrWhiteSpace(_contact))
+            {
+                <span class="client-contact-line">@_contact</span>
+            }
+        </EmptyState>
+    </div>
+}
+else
+{
+    <div class="client-card-page">
+        <section class="client-card-hero">
+            <div class="container">
+                <div class="client-card-hero-grid">
+                    <div class="client-card-hero-copy">
+                        <div class="client-card-tags">
+                            <span class="client-tag">Страна: @_card.CountryName</span>
+                            @if (!string.IsNullOrWhiteSpace(CityName))
+                            {
+                                <span class="client-tag">Город: @CityName</span>
+                            }
+                            @if (_card.CarListing.Year is not null)
+                            {
+                                <span class="client-tag">@_card.CarListing.Year</span>
+                            }
+                            @if (_card.CarListing.IsNewEnergy)
+                            {
+                                <span class="client-tag client-tag-green">Электро / гибрид</span>
+                            }
+                        </div>
+
+                        <h1>@DisplayTitle</h1>
+
+                        <p class="client-card-hero-sub">
+                            @DisplayFormat.Mileage(_card.CarListing.MileageKm)
+                            @if (!string.IsNullOrWhiteSpace(_card.CarListing.Displacement))
+                            {
+                                <span>· @_card.CarListing.Displacement</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(_card.CarListing.Gearbox))
+                            {
+                                <span>· @CarSpecTranslator.Translate(_card.CarListing.Gearbox)</span>
+                            }
+                        </p>
+
+                        @if (!string.IsNullOrWhiteSpace(_card.CustomerName))
+                        {
+                            <span class="client-prepared-for">Подготовлено для: <strong>@_card.CustomerName</strong></span>
+                        }
+                    </div>
+
+                    <div class="client-total-card">
+                        <span class="client-total-label">Стоимость под ключ</span>
+                        <strong class="client-total-value">@DisplayFormat.RubExact(_card.TotalRub)</strong>
+                        <span class="client-total-hint">
+                            @if (HasCityDelivery)
+                            {
+                                <text>Включены автомобиль, осмотр, доставка до Владивостока, доставка до города
+                                @DestinationCity, таможенное оформление, брокер, лаборатория и комиссии.</text>
+                            }
+                            else
+                            {
+                                <text>Включены автомобиль, осмотр, доставка до Владивостока, таможенное оформление,
+                                брокер, лаборатория и комиссии.</text>
+                            }
+                        </span>
+                        <div class="client-total-meta">
+                            <span>Сформировано: <strong>@DisplayFormat.DateLocal(_card.CreatedAt)</strong></span>
+                            <span>Курс расчёта: <strong>1 ¥ = @DisplayFormat.RubRate(EffectiveRate)</strong></span>
+                            @if (_card.MarkupPercent > 0)
+                            {
+                                <small>
+                                    курс ЦБ @DisplayFormat.RubRate(_card.ExchangeRate) + наценка
+                                    @DisplayFormat.Percent(_card.MarkupPercent)
+                                </small>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="container client-card-content">
+            <div class="client-card-layout">
+                <div class="client-card-main">
+                    <div class="car-gallery client-gallery" data-gallery>
+                        <button type="button" class="gallery-main" data-gallery-open data-src="@_mainPhoto" aria-label="Открыть фото">
+                            <img id="mainCarImage" src="@_mainPhoto" alt="@DisplayTitle" referrerpolicy="no-referrer"
+                                 onerror="this.onerror=null;this.src='/img/car-placeholder.svg';" />
+                            @if (_photos.Count > 1)
+                            {
+                                <span class="gallery-hint">Нажмите, чтобы увеличить · @_photos.Count фото</span>
+                            }
+                        </button>
+
+                        @if (_photos.Count > 1)
+                        {
+                            <div class="gallery-thumbs">
+                                @for (var i = 0; i < _photos.Count; i++)
+                                {
+                                    var index = i;
+                                    <button type="button" class="gallery-thumb @(index == 0 ? "active" : "")"
+                                            data-gallery-thumb data-index="@index" data-src="@_photos[index]"
+                                            aria-label="Фото @(index + 1)">
+                                        <img src="@_photos[index]" alt="Фото @(index + 1)" loading="lazy" referrerpolicy="no-referrer"
+                                             onerror="this.onerror=null;this.src='/img/car-placeholder.svg';" />
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <section class="detail-section client-spec-section">
+                        <div class="detail-section-head">
+                            <h2>Характеристики автомобиля</h2>
+                            <span>@_specs.Count параметров</span>
+                        </div>
+                        <div class="spec-grid">
+                            @foreach (var spec in _specs)
+                            {
+                                <div class="spec-row">
+                                    <span>@spec.Label</span>
+                                    <strong>@spec.Value</strong>
+                                </div>
+                            }
+                        </div>
+                    </section>
+
+                    @if (_photos.Count > 1)
+                    {
+                        <section class="detail-section">
+                            <div class="detail-section-head">
+                                <h2>Фотографии</h2>
+                                <span>@_photos.Count</span>
+                            </div>
+                            <div class="photo-grid client-photo-grid">
+                                @for (var i = 0; i < _photos.Count; i++)
+                                {
+                                    var index = i;
+                                    <button type="button" class="photo-grid-item" data-gallery-open data-src="@_photos[index]"
+                                            aria-label="Открыть фото @(index + 1)">
+                                        <img src="@_photos[index]" alt="Фото @(index + 1)" loading="lazy" referrerpolicy="no-referrer"
+                                             onerror="this.onerror=null;this.src='/img/car-placeholder.svg';" />
+                                    </button>
+                                }
+                            </div>
+                        </section>
+                    }
+                </div>
+
+                <aside class="client-card-aside">
+                    <section class="client-info-card">
+                        <span class="eyebrow">Автомобиль</span>
+                        <dl class="aside-list">
+                            <div><dt>Страна нахождения</dt><dd><strong>@_card.CountryName</strong></dd></div>
+                            @if (!string.IsNullOrWhiteSpace(CityName))
+                            {
+                                <div><dt>Город</dt><dd>@CityName</dd></div>
+                            }
+                            <div><dt>Год выпуска</dt><dd>@(_card.CarListing.Year?.ToString() ?? "—")</dd></div>
+                            <div><dt>Пробег</dt><dd>@DisplayFormat.Mileage(_card.CarListing.MileageKm)</dd></div>
+                            <div><dt>Коробка</dt><dd>@Display(CarSpecTranslator.Translate(_card.CarListing.Gearbox))</dd></div>
+                            <div><dt>Топливо</dt><dd>@Display(CarSpecTranslator.Translate(_card.CarListing.FuelType))</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="client-included-card">
+                        <span class="eyebrow">Включено в стоимость</span>
+                        <ul>
+                            <li>Автомобиль</li>
+                            <li>Осмотр автомобиля</li>
+                            <li>Доставка до Владивостока</li>
+                            @if (HasCityDelivery)
+                            {
+                                <li>Доставка из Владивостока: @DestinationCity</li>
+                            }
+                            <li>Таможенное оформление</li>
+                            <li>Брокер и лаборатория</li>
+                            <li>Комиссия и банковский перевод</li>
+                        </ul>
+                        <p>Итоговая стоимость уже включает все перечисленные услуги.</p>
+                    </section>
+
+                    @if (!string.IsNullOrWhiteSpace(_card.Note))
+                    {
+                        <section class="client-note-card">
+                            <span class="eyebrow">Комментарий менеджера</span>
+                            <p>@_card.Note</p>
+                        </section>
+                    }
+
+                    <section class="client-contact-card">
+                        <span class="eyebrow">Связаться с нами</span>
+                        @if (!string.IsNullOrWhiteSpace(_contact))
+                        {
+                            <p class="client-contact-text">@_contact</p>
+                        }
+                        else
+                        {
+                            <p class="muted">Свяжитесь с вашим менеджером, чтобы уточнить детали и оформить покупку.</p>
+                        }
+                        <button type="button" class="btn btn-outline-secondary btn-block" onclick="window.print()">
+                            Распечатать карточку
+                        </button>
+                    </section>
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    <div class="lightbox" id="carLightbox" hidden>
+        <button type="button" class="lightbox-close" data-lightbox-close aria-label="Закрыть">×</button>
+        <button type="button" class="lightbox-nav lightbox-prev" data-lightbox-prev aria-label="Назад">‹</button>
+        <img id="lightboxImage" src="" alt="Фотография автомобиля" referrerpolicy="no-referrer" />
+        <button type="button" class="lightbox-nav lightbox-next" data-lightbox-next aria-label="Вперёд">›</button>
+        <span class="lightbox-counter" id="lightboxCounter"></span>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string PublicId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private ClientCard? _card;
+    private List<string> _photos = [];
+    private string _mainPhoto = "/img/car-placeholder.svg";
+    private string _contact = "";
+    private string _siteName = "DiAvto";
+
+    private string DisplayTitle => _card is null
+        ? "Автомобиль"
+        : CarSpecTranslator.BuildTitle(
+            _card.CarListing.BrandName,
+            _card.CarListing.SeriesName,
+            _card.CarListing.Year,
+            _card.CarListing.Displacement,
+            _card.CarListing.Gearbox,
+            _card.CarListing.Title);
+
+    private string CityName => _card is null
+        ? ""
+        : CarSpecTranslator.Translate(_card.CarListing.CityName);
+
+    private string DestinationCity => _card?.DestinationCity ?? "";
+
+    private bool HasCityDelivery => _card is not null &&
+        !string.IsNullOrWhiteSpace(_card.DeliveryFromVladivostokTitle) &&
+        !string.Equals(_card.DestinationCity, "Без доставки", StringComparison.OrdinalIgnoreCase);
+
+    private decimal EffectiveRate => _card is null
+        ? 0m
+        : PricingCalculator.EffectiveRate(_card.ExchangeRate, _card.MarkupPercent);
+
+    private List<(string Label, string Value)> _specs
+    {
+        get
+        {
+            if (_card is null)
+            {
+                return [];
+            }
+
+            var listing = _card.CarListing;
+            return
+            [
+                ("Марка", Display(CarSpecTranslator.TranslateBrand(listing.BrandName))),
+                ("Модель", Display(CarSpecTranslator.TranslateSeries(listing.SeriesName))),
+                ("Год выпуска", listing.Year?.ToString() ?? "—"),
+                ("Первая регистрация", Display(listing.FirstRegistration)),
+                ("Пробег", DisplayFormat.Mileage(listing.MileageKm)),
+                ("Двигатель", Display(listing.Displacement)),
+                ("Коробка передач", Display(CarSpecTranslator.Translate(listing.Gearbox))),
+                ("Топливо", Display(CarSpecTranslator.Translate(listing.FuelType))),
+                ("Кузов", Display(CarSpecTranslator.Translate(listing.BodyType))),
+                ("Цвет", Display(CarSpecTranslator.Translate(listing.Color))),
+                ("Экологический класс", Display(CarSpecTranslator.Translate(listing.EmissionStandard))),
+                ("Владельцев по ПТС", listing.TransferCount?.ToString() ?? "—"),
+                ("Страна нахождения", _card.CountryName),
+                ("Город", CityName is { Length: > 0 } city ? city : "—")
+            ];
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _siteName = await Settings.GetAsync("SiteName", "DiAvto");
+        _contact = await Settings.GetAsync("ClientCardContactText");
+
+        try
+        {
+            _card = await Cards.GetPublicAsync(PublicId);
+        }
+        catch
+        {
+            _card = null;
+        }
+
+        if (_card is not null)
+        {
+            _photos = _card.CarListing.Photos
+                .OrderBy(x => x.SortOrder)
+                .Select(x => x.Url)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            if (_photos.Count == 0)
+            {
+                _photos.Add(_card.CarListing.ImageUrl ?? "/img/car-placeholder.svg");
+            }
+
+            _mainPhoto = _photos[0];
+        }
+
+        _loading = false;
+    }
+
+    private static string Display(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "—" : value;
+    }
+}

@@ -1,0 +1,57 @@
+@inherits LayoutComponentBase
+
+<div class="admin-shell">
+    <aside class="admin-sidebar">
+        <a class="admin-brand" href="/admin">
+            <img class="site-brand-logo" src="/logo.webp" alt="" width="44" height="32" />
+            <span class="site-brand-text">
+                <strong>DiAvto</strong>
+                <small>панель управления</small>
+            </span>
+        </a>
+
+        <AdminNav />
+
+        <div class="admin-sidebar-footer">
+            <a href="/" target="_blank" rel="noopener">Открыть сайт ↗</a>
+            <span>v1.0 · .NET 10</span>
+        </div>
+    </aside>
+
+    <div class="admin-main">
+        <header class="admin-topbar">
+            <div class="admin-topbar-title">
+                <span class="admin-topbar-dot"></span>
+                <span>Рабочая область</span>
+            </div>
+
+            <div class="admin-userbox">
+                <AuthorizeView>
+                    <Authorized Context="adminUser">
+                        <div class="admin-avatar">@(adminUser.User.Identity?.Name?.Substring(0, 1).ToUpperInvariant() ?? "A")</div>
+                        <div class="admin-user-meta">
+                            <strong>@(adminUser.User.FindFirst(ApplicationUserClaimsPrincipalFactory.DisplayNameClaim)?.Value ?? adminUser.User.Identity?.Name)</strong>
+                            <span>@(adminUser.User.IsInRole("Admin") ? "Администратор" : "Менеджер")</span>
+                        </div>
+                    </Authorized>
+                </AuthorizeView>
+
+                <form method="post" action="/Account/Logout" class="logout-form">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="ReturnUrl" value="" />
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Выйти</button>
+                </form>
+            </div>
+        </header>
+
+        <main class="admin-content">
+            @Body
+        </main>
+    </div>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Ошибка в admin-панели. Обновите страницу.
+    <a href="." class="reload">Обновить</a>
+    <span class="dismiss">×</span>
+</div>

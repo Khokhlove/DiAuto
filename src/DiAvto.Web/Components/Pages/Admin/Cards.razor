@@ -1,0 +1,278 @@
+﻿@page "/admin/cards"
+@attribute [Authorize(Policy = "AdminPage.cards")]
+@rendermode InteractiveServer
+@inject ClientCardService CardService
+@inject AppSettingsService Settings
+@inject AuditService Audit
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Карточки клиента — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Клиенты" Title="Карточки клиента"
+            Description="Публичные страницы автомобилей с итоговой стоимостью под ключ. Ссылку можно отправить клиенту — вход не требуется.">
+    <Actions>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/tariffs">Тарифы</a>
+        <a class="btn btn-primary btn-sm" href="/admin/listings">Выбрать автомобиль</a>
+    </Actions>
+</PageHeader>
+
+@if (_message is not null)
+{
+    <div class="alert alert-success" role="alert">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <span class="eyebrow">Публикация</span>
+            <h2>Адрес сайта для ссылок</h2>
+        </div>
+        <span class="badge-soft">@(_cards.Count) карточек</span>
+    </div>
+
+    <div class="form-grid">
+        <div class="form-field span-2">
+            <label>Название на публичной карточке</label>
+            <input class="form-control" @bind="_siteName" placeholder="DiAvto" />
+        </div>
+        <div class="form-field span-2">
+            <label>Публичный адрес сайта</label>
+            <input class="form-control" @bind="_publicBaseUrl" placeholder="http://89.250.28.51" />
+            <small class="field-help">
+                Используется в ссылках вида <code>{адрес}/card/…</code>. Если оставить пустым, будет использован адрес,
+                по которому открыта админка (например, localhost — не подходит для отправки клиенту).
+            </small>
+        </div>
+        <div class="form-field span-2">
+            <label>Контакты на карточке</label>
+            <input class="form-control" @bind="_contactText"
+                   placeholder="Менеджер: Иван · +7 999 123-45-67" />
+            <small class="field-help">Показываются в нижней части публичной карточки клиента.</small>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button class="btn btn-primary" @onclick="SaveSettingsAsync" disabled="@_saving">
+            @if (_saving)
+            {
+                <span class="spinner"></span>
+            }
+            Сохранить настройки
+        </button>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <span class="eyebrow">История</span>
+            <h2>Сформированные карточки</h2>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="LoadAsync" disabled="@_loading">Обновить</button>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-block compact"><span class="spinner"></span><p>Загружаем карточки…</p></div>
+    }
+    else if (_cards.Count == 0)
+    {
+        <EmptyState Title="Карточек пока нет"
+                    Description="Откройте автомобиль в админке и нажмите «Сформировать карточку клиента»."
+                    Icon="🪪">
+            <a class="btn btn-primary" href="/admin/listings">Перейти к автомобилям</a>
+        </EmptyState>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table data-table-wide">
+                <thead>
+                    <tr>
+                        <th>Автомобиль</th>
+                        <th>Клиент</th>
+                        <th>Город</th>
+                        <th>Итого</th>
+                        <th>Создана</th>
+                        <th>Статус</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var card in _cards)
+                    {
+                        <tr>
+                            <td>
+                                <div class="listing-cell">
+                                    <img src="@CardImage(card)" alt="" loading="lazy" referrerpolicy="no-referrer"
+                                         onerror="this.onerror=null;this.src='/img/car-placeholder.svg';" />
+                                    <div>
+                                        <a class="table-title" href="/admin/listings/@card.CarListingId">@CardTitle(card)</a>
+                                        <small class="muted mono">/card/@card.PublicId</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(card.CustomerName) ? "—" : card.CustomerName)</td>
+                            <td>@card.DestinationCity</td>
+                            <td><strong>@DisplayFormat.RubExact(card.TotalRub)</strong></td>
+                            <td class="muted">@DisplayFormat.DateLocal(card.CreatedAt)</td>
+                            <td>
+                                @if (!card.IsActive)
+                                {
+                                    <span class="status-badge status-failed"><span class="status-dot"></span>отключена</span>
+                                }
+                                else
+                                {
+                                    <span class="status-badge status-completed"><span class="status-dot"></span>действует</span>
+                                }
+                            </td>
+                            <td class="table-actions">
+                                <a href="@CardUrl(card)" target="_blank" rel="noopener noreferrer">Открыть</a>
+                                <button type="button" @onclick="() => CopyLinkAsync(card)">Копировать</button>
+                                <button type="button" class="@(card.IsActive ? "danger" : "")" @onclick="() => ToggleAsync(card)">
+                                    @(card.IsActive ? "Отключить" : "Включить")
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private bool _loading = true;
+    private bool _saving;
+    private string? _message;
+    private string? _error;
+    private string _siteName = "DiAvto";
+    private string _publicBaseUrl = "";
+    private string _contactText = "";
+    private List<ClientCard> _cards = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _siteName = await Settings.GetAsync("SiteName", "DiAvto");
+        _publicBaseUrl = await Settings.GetAsync("PublicBaseUrl");
+        _contactText = await Settings.GetAsync("ClientCardContactText");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _cards = await CardService.GetRecentAsync(200);
+        _loading = false;
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        _saving = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            var baseUrl = (_publicBaseUrl ?? "").Trim().TrimEnd('/');
+            if (baseUrl.Length > 0)
+            {
+                if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var parsed) ||
+                    parsed.Scheme is not ("http" or "https"))
+                {
+                    _error = "Адрес сайта должен начинаться с http:// или https://.";
+                    return;
+                }
+            }
+
+            await Settings.SetAsync("SiteName", string.IsNullOrWhiteSpace(_siteName) ? "DiAvto" : _siteName.Trim(),
+                "Название сайта");
+            await Settings.SetAsync("PublicBaseUrl", baseUrl,
+                "Публичный адрес сайта для ссылок клиентам, например http://89.250.28.51");
+            await Settings.SetAsync("ClientCardContactText", (_contactText ?? "").Trim(),
+                "Контакты менеджера на карточке клиента");
+            await Audit.LogAsync("cards.settings", "Сохранены название, публичный адрес и контакты для карточек клиента.");
+
+            _siteName = string.IsNullOrWhiteSpace(_siteName) ? "DiAvto" : _siteName.Trim();
+            _publicBaseUrl = baseUrl;
+            _message = "Настройки сохранены.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task CopyLinkAsync(ClientCard card)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("diavtoCopyText", CardUrl(card));
+            _message = "Ссылка скопирована в буфер обмена.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Не удалось скопировать ссылку: {ex.Message}";
+        }
+    }
+
+    private async Task ToggleAsync(ClientCard card)
+    {
+        _message = null;
+        _error = null;
+
+        try
+        {
+            var next = !card.IsActive;
+            await CardService.SetActiveAsync(card.Id, next);
+            await Audit.LogAsync("cards.toggle",
+                $"Карточка /card/{card.PublicId}: {(next ? "включена" : "отключена")}.");
+            _message = next ? "Карточка включена." : "Карточка отключена. Ссылка перестанет открываться у клиента.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private string CardUrl(ClientCard card)
+    {
+        var baseUrl = string.IsNullOrWhiteSpace(_publicBaseUrl)
+            ? Navigation.BaseUri
+            : _publicBaseUrl;
+
+        return $"{baseUrl.TrimEnd('/')}/card/{card.PublicId}";
+    }
+
+    private static string CardTitle(ClientCard card)
+    {
+        var listing = card.CarListing;
+        return CarSpecTranslator.BuildTitle(
+            listing.BrandName,
+            listing.SeriesName,
+            listing.Year,
+            listing.Displacement,
+            listing.Gearbox,
+            listing.Title);
+    }
+
+    private static string CardImage(ClientCard card)
+    {
+        return card.CarListing.Photos
+                   .OrderBy(x => x.SortOrder)
+                   .Select(x => x.Url)
+                   .FirstOrDefault()
+               ?? card.CarListing.ImageUrl
+               ?? "/img/car-placeholder.svg";
+    }
+}

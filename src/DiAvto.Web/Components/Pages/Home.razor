@@ -1,0 +1,218 @@
+@page "/"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Db
+@inject IMarketplaceClientFactory Clients
+@inject SearchExecutionService SearchExecutionService
+@inject CurrencyService CurrencyService
+
+<PageTitle>Поиск автомобилей — DiAvto</PageTitle>
+
+<div class="tool-page-shell">
+    <div class="tool-layout">
+        <aside class="tool-left-rail">
+            @if (_quote is not null)
+            {
+                <div class="tool-rate-card">
+                    <span>Юань / Рубль</span>
+                    <strong>1 юань = @DisplayFormat.RubRate(_quote.Rate)</strong>
+                    <small>ЦБ РФ · @DisplayFormat.Date(_quote.EffectiveDate)</small>
+                </div>
+            }
+
+            <BudgetPanel State="_budgetState" />
+        </aside>
+
+        <div class="tool-main">
+            <div class="tool-heading">
+                <h1>Поиск автомобилей</h1>
+            </div>
+
+            @if (_loadError is not null)
+            {
+                <div class="alert alert-danger" role="alert">@_loadError</div>
+            }
+
+            <section class="source-switcher" aria-label="Выбор источника">
+                <div class="source-switcher-head">
+                    <span>Источник</span>
+                </div>
+
+                <div class="source-tabs" role="tablist">
+                    @foreach (var source in _sources)
+                    {
+                        <button type="button"
+                                role="tab"
+                                aria-selected="@(source.Id == _activeSource?.Id)"
+                                class="source-tab @(source.Id == _activeSource?.Id ? "active" : "")"
+                                @onclick="() => SelectSource(source)">
+                            <span class="source-tab-status @(IsReady(source) ? "ready" : "pending")"></span>
+                            <span class="source-tab-text" title="@source.Name">
+                                <strong>@SourceTabName(source)</strong>
+                                <small>@SourceStatus(source)</small>
+                            </span>
+                        </button>
+                    }
+
+                    @if (_sources.Count == 0)
+                    {
+                        <span class="source-tabs-empty">Источники не настроены</span>
+                    }
+                </div>
+            </section>
+
+            @if (_loading)
+            {
+                <div class="loading-block compact"><span class="spinner"></span><p>Загружаем источники…</p></div>
+            }
+            else if (_activeSource is null)
+            {
+                <EmptyState Title="Нет источников"
+                            Description="Добавьте источник в админке и подключите адаптер."
+                            Icon="🔌">
+                    <a class="btn btn-primary" href="/admin/sources">Открыть источники</a>
+                </EmptyState>
+            }
+            else if (IsReady(_activeSource))
+            {
+                <SearchPanel SourceSite="_activeSource" BudgetState="_budgetState" @key="_activeSource.Id" />
+            }
+            else
+            {
+                <section class="tool-placeholder">
+                    <span class="tool-placeholder-badge">заготовка</span>
+                    <h2>@_activeSource.Name</h2>
+                    <p>
+                        @if (!HasClient(_activeSource))
+                        {
+                            <span>Второй источник пока не подключён. Настройте его в админке — после подключения здесь появится форма поиска.</span>
+                        }
+                        else
+                        {
+                            <span>Источник отключён. Включите его в админке, чтобы запускать поиск.</span>
+                        }
+                    </p>
+                    <div class="tool-placeholder-actions">
+                        <AuthorizeView Roles="Admin">
+                            <Authorized>
+                                <a class="btn btn-primary" href="/admin/sources">Настроить источник</a>
+                            </Authorized>
+                        </AuthorizeView>
+                        <a class="btn btn-outline-secondary" href="/">Выбрать другой источник</a>
+                    </div>
+                </section>
+            }
+
+            <section class="tool-panel tool-recent">
+                <div class="tool-panel-head">
+                    <div>
+                        <h2>Последние запросы</h2>
+                    </div>
+                    <AuthorizeView Roles="Admin">
+                        <Authorized>
+                            <a href="/admin/searches">Все →</a>
+                        </Authorized>
+                    </AuthorizeView>
+                </div>
+
+                @if (_recent.Count == 0)
+                {
+                    <p class="tool-empty">Запросов пока нет. Запустите первый поиск.</p>
+                }
+                else
+                {
+                    <div class="recent-list">
+                        @foreach (var request in _recent)
+                        {
+                            <a class="recent-item" href="/search/@request.PublicId">
+                                <div class="recent-main">
+                                    <strong>@request.BrandName</strong>
+                                    @if (!string.IsNullOrWhiteSpace(request.SeriesName))
+                                    {
+                                        <span>@CarSpecTranslator.TranslateSeries(request.SeriesName)</span>
+                                    }
+                                </div>
+                                <div class="recent-meta">
+                                    <StatusBadge Status="request.Status" />
+                                    <span>@request.ResultCount рез.</span>
+                                    <span>@DisplayFormat.Date(request.CreatedAt)</span>
+                                </div>
+                            </a>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly SearchBudgetState _budgetState = new();
+    private List<SourceSite> _sources = [];
+    private List<SearchRequest> _recent = [];
+    private SourceSite? _activeSource;
+    private CurrencyQuote? _quote;
+    private bool _loading = true;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _sources = await Db.SourceSites
+                .AsNoTracking()
+                .OrderBy(x => x.Id)
+                .ToListAsync();
+
+            _activeSource = _sources.FirstOrDefault(x => IsReady(x)) ?? _sources.FirstOrDefault();
+            _recent = (await SearchExecutionService.GetRecentAsync(6)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+
+        try
+        {
+            _quote = await CurrencyService.GetCurrentAsync();
+        }
+        catch
+        {
+            _quote = null;
+        }
+
+        _loading = false;
+    }
+
+    private void SelectSource(SourceSite source)
+    {
+        _activeSource = source;
+    }
+
+    private bool HasClient(SourceSite source)
+    {
+        return Clients.All.Any(x => string.Equals(x.Key, source.Key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool IsReady(SourceSite source)
+    {
+        return source.IsEnabled && HasClient(source);
+    }
+
+    private static string SourceTabName(SourceSite source)
+    {
+        var separator = source.Name.IndexOf('·');
+        return separator > 0 ? source.Name[..separator].Trim() : source.Name;
+    }
+
+    private string SourceStatus(SourceSite source)
+    {
+        if (!HasClient(source))
+        {
+            return "заготовка";
+        }
+
+        return source.IsEnabled ? "подключён" : "отключён";
+    }
+}

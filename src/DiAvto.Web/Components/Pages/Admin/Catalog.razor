@@ -1,0 +1,346 @@
+@page "/admin/catalog"
+@attribute [Authorize(Policy = "AdminPage.catalog")]
+@rendermode InteractiveServer
+@inject ApplicationDbContext Db
+@inject CatalogService CatalogService
+@inject AuditService Audit
+
+<PageTitle>Каталог — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Данные" Title="Каталог марок и моделей"
+            Description="Кэш каталога che168. Синхронизация подтягивает актуальные бренды и модели. Название модели можно исправить в списке справа.">
+    <Actions>
+        <button class="btn btn-primary btn-sm" @onclick="SyncBrandsAsync" disabled="@_syncingBrands">
+            @if (_syncingBrands)
+            {
+                <span class="spinner"></span>
+            }
+            Синхронизировать бренды
+        </button>
+    </Actions>
+</PageHeader>
+
+<div class="alert alert-info" role="alert">
+    Кнопка «Синхронизировать бренды» запрашивает у che168 список марок и обновляет локальный кэш.
+    Модели не загружаются все сразу: они подтягиваются при открытии бренда или кнопкой «Обновить».
+</div>
+
+@if (_message is not null)
+{
+    <div class="alert alert-success" role="alert">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+<div class="admin-two-col catalog-layout">
+    <section class="panel">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">Бренды</span>
+                <h2>@_brands.Count в выборке</h2>
+            </div>
+            <span class="badge-soft">@_totalBrands всего</span>
+        </div>
+
+        <div class="filter-bar">
+            <input class="form-control" placeholder="Поиск по названию, pinyin или китайскому имени…"
+                   @bind="_search" @onkeydown="OnSearchKeyDown" />
+            <button class="btn btn-outline-secondary" @onclick="LoadBrandsAsync">Найти</button>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="loading-block compact"><span class="spinner"></span><p>Загружаем каталог…</p></div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Бренд</th>
+                            <th>Источник</th>
+                            <th>Моделей</th>
+                            <th>Статус</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var brand in _brands)
+                        {
+                            <tr class="@(brand.Id == _selectedBrandId ? "row-selected" : "")">
+                                <td>
+                                    <button class="link-button" @onclick="() => SelectBrandAsync(brand.Id)">
+                                        <span class="brand-cell">
+                                            @if (!string.IsNullOrWhiteSpace(brand.IconUrl))
+                                            {
+                                                <img src="@brand.IconUrl" alt="" referrerpolicy="no-referrer" loading="lazy" />
+                                            }
+                                            <span>
+                                                <strong>@brand.DisplayName</strong>
+                                                <small>@brand.Name @if (!string.IsNullOrWhiteSpace(brand.NameLatin)) { <span>· @brand.NameLatin</span> }</small>
+                                            </span>
+                                        </span>
+                                    </button>
+                                </td>
+                                <td class="muted">@brand.SourceSite.Name</td>
+                                <td>
+                                    @if (_seriesCounts.TryGetValue(brand.Id, out var seriesCount) && seriesCount > 0)
+                                    {
+                                        @seriesCount
+                                    }
+                                    else
+                                    {
+                                        <span class="muted" title="Модели этого бренда ещё не загружались">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <button class="switch @(brand.IsActive ? "on" : "")" @onclick="() => ToggleBrandAsync(brand.Id)" aria-label="Переключить бренд">
+                                        <span></span>
+                                    </button>
+                                </td>
+                                <td><button class="link-button" @onclick="() => SelectBrandAsync(brand.Id)">Модели →</button></td>
+                            </tr>
+                        }
+                        @if (_brands.Count == 0)
+                        {
+                            <tr><td colspan="5" class="table-empty">Ничего не найдено. Запустите синхронизацию.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="table-note">
+                «—» означает, что модели бренда ещё не загружались. Нажмите «Модели →» или «Обновить», чтобы
+                получить их из источника.
+            </p>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">Модели</span>
+                <h2>@(_selectedBrand is null ? "Выберите бренд" : _selectedBrand.DisplayName)</h2>
+            </div>
+            @if (_selectedBrand is not null)
+            {
+                <button class="btn btn-sm btn-outline-secondary" @onclick="SyncSeriesAsync" disabled="@_syncingSeries">
+                    @if (_syncingSeries)
+                    {
+                        <span class="spinner"></span>
+                    }
+                    Обновить
+                </button>
+            }
+        </div>
+
+        @if (_selectedBrand is null)
+        {
+            <p class="muted">Нажмите на бренд слева, чтобы увидеть модели и обновить их из источника.</p>
+        }
+        else if (_seriesLoading)
+        {
+            <div class="loading-block compact"><span class="spinner"></span><p>Загружаем модели…</p></div>
+        }
+        else
+        {
+            <div class="series-list">
+                @foreach (var series in _series)
+                {
+                    <div class="series-row">
+                        <div>
+                            <strong>@SeriesShortName(series)</strong>
+                            <span>@series.Name · @series.ExternalId</span>
+                        </div>
+                        <div class="series-name-editor">
+                            <input class="form-control form-control-sm"
+                                   value="@series.NameRu"
+                                   placeholder="Название в сервисе"
+                                   title="Отображаемое название модели. Очистите, чтобы вернуть исходное имя che168."
+                                   @onchange="e => SaveSeriesNameAsync(series.Id, e.Value?.ToString())" />
+                        </div>
+                        <div class="series-meta">
+                            <span>@(series.PriceRange ?? "—")</span>
+                            <span class="@(series.IsActive ? "health-ok" : "health-fail")">@(series.IsActive ? "активна" : "скрыта")</span>
+                        </div>
+                    </div>
+                }
+                @if (_series.Count == 0)
+                {
+                    <p class="muted">Моделей пока нет. Нажмите «Обновить».</p>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _syncingBrands;
+    private bool _syncingSeries;
+    private bool _seriesLoading;
+    private string? _message;
+    private string? _error;
+    private string _search = "";
+    private List<Brand> _brands = [];
+    private List<CarSeries> _series = [];
+    private Dictionary<int, int> _seriesCounts = [];
+    private int _totalBrands;
+    private int? _selectedBrandId;
+    private Brand? _selectedBrand;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBrandsAsync();
+    }
+
+    private async Task LoadBrandsAsync()
+    {
+        _loading = true;
+        _brands = await CatalogService.GetAdminBrandsAsync(_search);
+        _totalBrands = await Db.Brands.CountAsync();
+        _seriesCounts = await Db.CarSeries
+            .GroupBy(x => x.BrandId)
+            .Select(x => new { BrandId = x.Key, Count = x.Count() })
+            .ToDictionaryAsync(x => x.BrandId, x => x.Count);
+
+        if (_selectedBrandId is not null)
+        {
+            _selectedBrand = _brands.FirstOrDefault(x => x.Id == _selectedBrandId);
+            if (_selectedBrand is null)
+            {
+                _selectedBrandId = null;
+                _series = [];
+            }
+        }
+
+        _loading = false;
+    }
+
+    private async Task OnSearchKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            await LoadBrandsAsync();
+        }
+    }
+
+    private async Task SelectBrandAsync(int brandId)
+    {
+        _selectedBrandId = brandId;
+        _selectedBrand = _brands.FirstOrDefault(x => x.Id == brandId);
+        _seriesLoading = true;
+        StateHasChanged();
+
+        _series = await Db.CarSeries
+            .AsNoTracking()
+            .Where(x => x.BrandId == brandId)
+            .OrderBy(x => x.Name)
+            .ToListAsync();
+
+        _seriesLoading = false;
+    }
+
+    private async Task SyncBrandsAsync()
+    {
+        _syncingBrands = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            var source = await Db.SourceSites.FirstAsync(x => x.Key == "che168");
+            var count = await CatalogService.SyncBrandsAsync(source.Id);
+            await Audit.LogAsync("catalog.brands.sync", $"Синхронизировано брендов: {count}.");
+            _message = $"Синхронизация завершена: {count} брендов.";
+            await LoadBrandsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _syncingBrands = false;
+        }
+    }
+
+    private async Task SyncSeriesAsync()
+    {
+        if (_selectedBrandId is null)
+        {
+            return;
+        }
+
+        _syncingSeries = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            var count = await CatalogService.SyncSeriesAsync(_selectedBrandId.Value);
+            await Audit.LogAsync("catalog.series.sync", $"Бренд {_selectedBrandId}: моделей {count}.");
+            _message = $"Модели обновлены: {count}.";
+            await SelectBrandAsync(_selectedBrandId.Value);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _syncingSeries = false;
+        }
+    }
+
+    private async Task ToggleBrandAsync(int brandId)
+    {
+        var brand = await Db.Brands.FirstAsync(x => x.Id == brandId);
+        brand.IsActive = !brand.IsActive;
+        await Db.SaveChangesAsync();
+        await Audit.LogAsync("catalog.brand.toggle", $"{brand.Name}: активен = {brand.IsActive}.");
+        await LoadBrandsAsync();
+        if (_selectedBrandId == brandId)
+        {
+            _selectedBrand = _brands.FirstOrDefault(x => x.Id == brandId);
+        }
+    }
+
+    private async Task SaveSeriesNameAsync(int seriesId, string? value)
+    {
+        _message = null;
+        _error = null;
+
+        try
+        {
+            var series = await Db.CarSeries.FirstAsync(x => x.Id == seriesId);
+            series.NameRu = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("catalog.series.rename", $"{series.Name}: отображаемое название «{series.NameRu ?? "по умолчанию"}».");
+            _message = "Название модели обновлено.";
+
+            if (_selectedBrandId is not null)
+            {
+                await SelectBrandAsync(_selectedBrandId.Value);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private string SeriesShortName(CarSeries series)
+    {
+        var name = series.DisplayName;
+
+        if (_selectedBrand is not null && name.StartsWith(_selectedBrand.Name, StringComparison.Ordinal))
+        {
+            name = name[_selectedBrand.Name.Length..].Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(name) ? series.DisplayName : name;
+    }
+}

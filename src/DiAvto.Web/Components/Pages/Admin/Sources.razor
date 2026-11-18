@@ -1,0 +1,299 @@
+@page "/admin/sources"
+@attribute [Authorize(Policy = "AdminPage.sources")]
+@rendermode InteractiveServer
+@inject ApplicationDbContext Db
+@inject CatalogService CatalogService
+@inject IMarketplaceClientFactory Clients
+@inject AuditService Audit
+
+<PageTitle>Источники — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Интеграции" Title="Источники данных"
+            Description="Подключённые площадки, состояние API и правила атрибуции." />
+
+@if (_loading)
+{
+    <div class="loading-block"><span class="spinner spinner-lg"></span><p>Загружаем источники…</p></div>
+}
+else
+{
+    <div class="admin-two-col">
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <span class="eyebrow">Подключения</span>
+                    <h2>Площадки</h2>
+                </div>
+                <span class="badge-soft">@_sources.Count источника</span>
+            </div>
+
+            <div class="source-list">
+                @foreach (var source in _sources)
+                {
+                    <button type="button" class="source-card @(source.Id == _selected?.Id ? "active" : "")"
+                            @onclick="() => Select(source)">
+                        <div class="source-card-head">
+                            <span class="source-avatar">@SourceInitial(source.Name)</span>
+                            <div>
+                                <strong>@source.Name</strong>
+                                <span>@source.Key</span>
+                            </div>
+                            <span class="source-toggle @(source.IsEnabled ? "on" : "")">@(source.IsEnabled ? "вкл" : "выкл")</span>
+                        </div>
+                        <div class="source-card-meta">
+                            <span class="@(source.LastHealthCheckOk == true ? "health-ok" : source.LastHealthCheckOk == false ? "health-fail" : "health-unknown")">
+                                @(source.LastHealthCheckOk == true ? "API доступен" : source.LastHealthCheckOk == false ? "API недоступен" : "не проверялся")
+                            </span>
+                            <span>@(source.LastHealthCheckAt is null ? "—" : DisplayFormat.Date(source.LastHealthCheckAt.Value))</span>
+                        </div>
+                    </button>
+                }
+            </div>
+
+            <div class="panel-divider"></div>
+
+            <div class="adapter-list">
+                <span class="eyebrow">Зарегистрированные адаптеры</span>
+                @foreach (var client in Clients.All)
+                {
+                    <div class="adapter-row">
+                        <span class="adapter-dot"></span>
+                        <strong>@client.Key</strong>
+                        <span>@client.DisplayName</span>
+                    </div>
+                }
+            </div>
+        </section>
+
+        @if (_selected is not null)
+        {
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <span class="eyebrow">Настройки</span>
+                        <h2>@_selected.Name</h2>
+                    </div>
+                    <span class="status-badge @(_selected.IsEnabled ? "status-completed" : "status-failed")">
+                        <span class="status-dot"></span>@(_selected.IsEnabled ? "включён" : "отключён")
+                    </span>
+                </div>
+
+                @if (_message is not null)
+                {
+                    <div class="alert alert-success" role="alert">@_message</div>
+                }
+                @if (_error is not null)
+                {
+                    <div class="alert alert-danger" role="alert">@_error</div>
+                }
+
+                <div class="form-grid">
+                    <div class="form-field span-2">
+                        <label>Название</label>
+                        <input class="form-control" @bind="_edit.Name" />
+                    </div>
+                    <div class="form-field">
+                        <label>Технический ключ</label>
+                        <input class="form-control" value="@_selected.Key" disabled />
+                    </div>
+                    <div class="form-field">
+                        <label>Базовый адрес</label>
+                        <input class="form-control" @bind="_edit.BaseUrl" />
+                    </div>
+                    <div class="form-field span-2">
+                        <label>Шаблон ссылки на карточку</label>
+                        <input class="form-control" @bind="_edit.DetailUrlTemplate" placeholder="https://.../{infoid}" />
+                        <small class="field-help">Токен <code>{infoid}</code> заменяется на ID объявления.</small>
+                    </div>
+                    <div class="form-field span-2">
+                        <label>Адрес логотипа</label>
+                        <input class="form-control" @bind="_edit.LogoUrl" placeholder="https://..." />
+                        <small class="field-help">Логотип источника для блока атрибуции на страницах результатов. Можно добавить позже.</small>
+                    </div>
+                    <div class="form-field span-2">
+                        <label>Текст атрибуции</label>
+                        <textarea class="form-control" rows="3" @bind="_edit.AttributionText"></textarea>
+                    </div>
+                    <div class="form-field span-2">
+                        <label>Заметки</label>
+                        <textarea class="form-control" rows="3" @bind="_edit.Notes"></textarea>
+                    </div>
+                    <label class="checkbox-row span-2">
+                        <input type="checkbox" @bind="_edit.IsEnabled" />
+                        <span>Источник включён и доступен для поиска</span>
+                    </label>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                        @if (_saving)
+                        {
+                            <span class="spinner"></span>
+                        }
+                        Сохранить
+                    </button>
+                    <button class="btn btn-outline-secondary" @onclick="CheckHealthAsync" disabled="@_checking">
+                        @if (_checking)
+                        {
+                            <span class="spinner"></span>
+                        }
+                        Проверить API
+                    </button>
+                </div>
+
+                <div class="panel-divider"></div>
+                <div class="tech-info">
+                    <div><span>Последняя проверка</span><strong>@(_selected.LastHealthCheckAt is null ? "—" : DisplayFormat.Date(_selected.LastHealthCheckAt.Value))</strong></div>
+                    <div><span>Статус API</span><strong>@(_selected.LastHealthCheckOk switch { true => "Доступен", false => "Ошибка", _ => "Не проверен" })</strong></div>
+                    <div><span>Сообщение</span><strong class="wrap">@(_selected.LastHealthCheckMessage ?? "—")</strong></div>
+                </div>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _saving;
+    private bool _checking;
+    private string? _message;
+    private string? _error;
+    private List<SourceSite> _sources = [];
+    private SourceSite? _selected;
+    private SourceEditModel _edit = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _sources = await Db.SourceSites.AsNoTracking().OrderBy(x => x.Id).ToListAsync();
+        if (_selected is not null)
+        {
+            _selected = _sources.FirstOrDefault(x => x.Id == _selected.Id) ?? _sources.FirstOrDefault();
+        }
+        else
+        {
+            _selected = _sources.FirstOrDefault();
+        }
+
+        ResetEdit();
+        _loading = false;
+    }
+
+    private void Select(SourceSite source)
+    {
+        _selected = source;
+        _message = null;
+        _error = null;
+        ResetEdit();
+    }
+
+    private void ResetEdit()
+    {
+        if (_selected is null)
+        {
+            return;
+        }
+
+        _edit = new SourceEditModel
+        {
+            Name = _selected.Name,
+            BaseUrl = _selected.BaseUrl,
+            DetailUrlTemplate = _selected.DetailUrlTemplate,
+            LogoUrl = _selected.LogoUrl,
+            AttributionText = _selected.AttributionText,
+            Notes = _selected.Notes,
+            IsEnabled = _selected.IsEnabled
+        };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_selected is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_edit.Name) || string.IsNullOrWhiteSpace(_edit.BaseUrl))
+            {
+                _error = "Название и базовый адрес обязательны.";
+                return;
+            }
+
+            var source = await Db.SourceSites.FirstAsync(x => x.Id == _selected.Id);
+            source.Name = _edit.Name.Trim();
+            source.BaseUrl = _edit.BaseUrl.Trim();
+            source.DetailUrlTemplate = string.IsNullOrWhiteSpace(_edit.DetailUrlTemplate) ? null : _edit.DetailUrlTemplate.Trim();
+            source.LogoUrl = string.IsNullOrWhiteSpace(_edit.LogoUrl) ? null : _edit.LogoUrl.Trim();
+            source.AttributionText = _edit.AttributionText.Trim();
+            source.Notes = _edit.Notes?.Trim();
+            source.IsEnabled = _edit.IsEnabled;
+
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("source.update", $"Источник {source.Key}: сохранены настройки.");
+            _message = "Настройки источника сохранены.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task CheckHealthAsync()
+    {
+        if (_selected is null)
+        {
+            return;
+        }
+
+        _checking = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            var health = await CatalogService.CheckSourceAsync(_selected.Id);
+            _message = health.Ok ? $"API доступен. {health.Message}" : $"API недоступен: {health.Message}";
+            await Audit.LogAsync("source.health", $"{_selected.Key}: {(health.Ok ? "OK" : "FAIL")} — {health.Message}");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    private static string SourceInitial(string name)
+    {
+        return string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[..1].ToUpperInvariant();
+    }
+
+    private sealed class SourceEditModel
+    {
+        public string Name { get; set; } = "";
+        public string BaseUrl { get; set; } = "";
+        public string? DetailUrlTemplate { get; set; }
+        public string? LogoUrl { get; set; }
+        public string AttributionText { get; set; } = "";
+        public string? Notes { get; set; }
+        public bool IsEnabled { get; set; }
+    }
+}

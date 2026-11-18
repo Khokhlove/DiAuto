@@ -1,0 +1,375 @@
+@page "/admin/tariffs"
+@attribute [Authorize(Policy = "AdminPage.tariffs")]
+@rendermode InteractiveServer
+@inject ApplicationDbContext Db
+@inject AuditService Audit
+@inject IJSRuntime JS
+
+<PageTitle>Тарифы — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Настройки" Title="Тарифы доставки до города"
+            Description="Стоимость доставки из Владивостока до города клиента. Осмотр, таможня, брокер, комиссии и банк рассчитываются автоматически.">
+    <Actions>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/cards">Карточки клиента</a>
+    </Actions>
+</PageHeader>
+
+<div class="alert alert-info" role="alert">
+    Здесь настраивается только доставка из Владивостока до города клиента. Остальные расходы рассчитываются по правилам:
+    осмотр 900 ¥, брокер и лаборатория 140 000 ₽, наша комиссия и банковская комиссия 2,5%.
+</div>
+
+@if (_message is not null)
+{
+    <div class="alert alert-success" role="alert">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+@if (_editing)
+{
+    <section class="panel tariff-editor">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">@(_editId is null ? "Новый тариф" : "Изменение тарифа")</span>
+                <h2>@ServiceTariffKinds.Title(_editKind)</h2>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">Отменить</button>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-field">
+                <label>Тип услуги</label>
+                <select class="form-select" @bind="_editKind">
+                    @foreach (var kind in new[] { ServiceTariffKind.DeliveryFromVladivostok })
+                    {
+                        <option value="@kind">@ServiceTariffKinds.Title(kind)</option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-field">
+                <label>Название <span class="required">*</span></label>
+                <input class="form-control" @bind="_editTitle"
+                       placeholder="@TitlePlaceholder(_editKind)" />
+                <small class="field-help">@TitleHelp(_editKind)</small>
+            </div>
+
+            <div class="form-field">
+                <label>Стоимость, ₽ <span class="required">*</span></label>
+                <input type="number" class="form-control" min="0" step="100" @bind="_editAmount" />
+                <small class="field-help">0 ₽ допустим, если услуга бесплатная. Нулевые тарифы подсвечиваются как незаполненные.</small>
+            </div>
+
+            <div class="form-field">
+                <label>Порядок сортировки</label>
+                <input type="number" class="form-control" min="0" step="1" @bind="_editSort" />
+            </div>
+
+            <div class="form-field span-2">
+                <label>Комментарий</label>
+                <textarea class="form-control" rows="2" @bind="_editNotes"
+                          placeholder="Например: срок 30–45 дней, стоимость может уточняться"></textarea>
+            </div>
+
+            <label class="checkbox-row">
+                <input type="checkbox" @bind="_editDefault" />
+                <span>Тариф по умолчанию для этого типа</span>
+            </label>
+
+            <label class="checkbox-row">
+                <input type="checkbox" @bind="_editActive" />
+                <span>Тариф доступен для выбора</span>
+            </label>
+        </div>
+
+        @if (_editAmount == 0)
+        {
+            <div class="alert alert-warning tariff-warning" role="alert">
+                Стоимость не заполнена. Проверьте сумму, чтобы клиент не получил предложение с нулевой доставкой или осмотром.
+            </div>
+        }
+
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                @if (_saving)
+                {
+                    <span class="spinner"></span>
+                }
+                Сохранить тариф
+            </button>
+            <button class="btn btn-outline-secondary" @onclick="CancelEdit">Отмена</button>
+        </div>
+    </section>
+}
+
+@if (_loading)
+{
+    <div class="loading-block"><span class="spinner spinner-lg"></span><p>Загружаем тарифы…</p></div>
+}
+else
+{
+    <div class="tariff-sections">
+        @foreach (var kind in new[] { ServiceTariffKind.DeliveryFromVladivostok })
+        {
+            var kindValue = kind;
+            var items = ForKind(kindValue);
+
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <span class="eyebrow">@ServiceTariffKinds.GroupHint(kindValue)</span>
+                        <h2>@ServiceTariffKinds.Title(kindValue)</h2>
+                    </div>
+                    <button class="btn btn-sm btn-primary" @onclick="() => StartCreate(kindValue)">+ Добавить</button>
+                </div>
+
+                @if (items.Count == 0)
+                {
+                    <p class="muted tariff-empty">Тарифы этого типа пока не добавлены. Клиентская карточка не сможет быть сформирована, пока нет активного тарифа.</p>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Название</th>
+                                    <th>Стоимость</th>
+                                    <th>Статус</th>
+                                    <th>Порядок</th>
+                                    <th>Комментарий</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var tariff in items)
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@tariff.Title</strong>
+                                            @if (tariff.IsDefault)
+                                            {
+                                                <span class="badge-soft tariff-default-badge">по умолчанию</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (tariff.AmountRub == 0)
+                                            {
+                                                <span class="tariff-zero">0 ₽ · не заполнено</span>
+                                            }
+                                            else
+                                            {
+                                                <strong>@DisplayFormat.RubExact(tariff.AmountRub)</strong>
+                                            }
+                                        </td>
+                                        <td>
+                                            <span class="status-badge @(tariff.IsActive ? "status-completed" : "status-failed")">
+                                                <span class="status-dot"></span>@(tariff.IsActive ? "активен" : "отключён")
+                                            </span>
+                                        </td>
+                                        <td class="muted">@tariff.SortOrder</td>
+                                        <td class="muted wrap">@(string.IsNullOrWhiteSpace(tariff.Notes) ? "—" : tariff.Notes)</td>
+                                        <td class="table-actions">
+                                            <button type="button" @onclick="() => StartEdit(tariff)">Изменить</button>
+                                            <button type="button" class="danger" @onclick="() => DeleteAsync(tariff)">Удалить</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _saving;
+    private bool _editing;
+    private string? _message;
+    private string? _error;
+
+    private List<ServiceTariff> _tariffs = [];
+
+    private int? _editId;
+    private ServiceTariffKind _editKind = ServiceTariffKind.DeliveryFromVladivostok;
+    private string _editTitle = "";
+    private decimal _editAmount;
+    private bool _editDefault;
+    private bool _editActive = true;
+    private int _editSort;
+    private string? _editNotes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _tariffs = await Db.ServiceTariffs
+            .AsNoTracking()
+            .OrderBy(x => x.Kind)
+            .ThenBy(x => x.SortOrder)
+            .ThenBy(x => x.Title)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private List<ServiceTariff> ForKind(ServiceTariffKind kind)
+    {
+        return _tariffs
+            .Where(x => x.Kind == kind)
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Title)
+            .ToList();
+    }
+
+    private void StartCreate(ServiceTariffKind kind)
+    {
+        _message = null;
+        _error = null;
+        _editing = true;
+        _editId = null;
+        _editKind = kind;
+        _editTitle = "";
+        _editAmount = 0;
+        _editDefault = !_tariffs.Any(x => x.Kind == kind && x.IsDefault);
+        _editActive = true;
+        _editSort = _tariffs.Where(x => x.Kind == kind).Select(x => x.SortOrder).DefaultIfEmpty(0).Max() + 10;
+        _editNotes = null;
+    }
+
+    private void StartEdit(ServiceTariff tariff)
+    {
+        _message = null;
+        _error = null;
+        _editing = true;
+        _editId = tariff.Id;
+        _editKind = tariff.Kind;
+        _editTitle = tariff.Title;
+        _editAmount = tariff.AmountRub;
+        _editDefault = tariff.IsDefault;
+        _editActive = tariff.IsActive;
+        _editSort = tariff.SortOrder;
+        _editNotes = tariff.Notes;
+    }
+
+    private void CancelEdit()
+    {
+        _editing = false;
+        _editId = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_editTitle))
+            {
+                _error = "Укажите название тарифа.";
+                return;
+            }
+
+            if (_editAmount < 0)
+            {
+                _error = "Стоимость не может быть отрицательной.";
+                return;
+            }
+
+            var title = _editTitle.Trim();
+            ServiceTariff tariff;
+            if (_editId is null)
+            {
+                tariff = new ServiceTariff();
+                Db.ServiceTariffs.Add(tariff);
+            }
+            else
+            {
+                tariff = await Db.ServiceTariffs.FirstAsync(x => x.Id == _editId.Value);
+            }
+
+            if (_editDefault)
+            {
+                var otherDefaults = await Db.ServiceTariffs
+                    .Where(x => x.Kind == _editKind && x.Id != (_editId ?? 0) && x.IsDefault)
+                    .ToListAsync();
+
+                foreach (var other in otherDefaults)
+                {
+                    other.IsDefault = false;
+                }
+            }
+
+            tariff.Kind = _editKind;
+            tariff.Title = title;
+            tariff.AmountRub = _editAmount;
+            tariff.IsDefault = _editDefault;
+            tariff.IsActive = _editActive;
+            tariff.SortOrder = Math.Max(0, _editSort);
+            tariff.Notes = string.IsNullOrWhiteSpace(_editNotes) ? null : _editNotes.Trim();
+            tariff.UpdatedAt = DateTime.UtcNow;
+
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("tariff.save", $"Тариф «{title}» ({ServiceTariffKinds.Title(_editKind)}) сохранён: {_editAmount:N0} ₽.");
+
+            _message = "Тариф сохранён.";
+            _editing = false;
+            _editId = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteAsync(ServiceTariff tariff)
+    {
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Удалить тариф «{tariff.Title}»? Уже сформированные карточки сохранят старые суммы.");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        _message = null;
+        _error = null;
+
+        try
+        {
+            Db.ServiceTariffs.Remove(tariff);
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("tariff.delete", $"Тариф «{tariff.Title}» ({ServiceTariffKinds.Title(tariff.Kind)}) удалён.");
+            _message = "Тариф удалён.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static string KindHint(ServiceTariffKind kind) => ServiceTariffKinds.GroupHint(kind);
+
+    private static string TitlePlaceholder(ServiceTariffKind kind) => ServiceTariffKinds.TitlePlaceholder(kind);
+
+    private static string TitleHelp(ServiceTariffKind kind) => ServiceTariffKinds.TitleHelp(kind);
+}

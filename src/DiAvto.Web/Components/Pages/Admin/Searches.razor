@@ -1,0 +1,193 @@
+@page "/admin/searches"
+@attribute [Authorize(Policy = "AdminPage.searches")]
+@rendermode InteractiveServer
+@inject ApplicationDbContext Db
+
+<PageTitle>Поиски — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Активность" Title="Поисковые запросы"
+            Description="История запросов пользователей, фильтры, курс и результаты.">
+    <Actions>
+        <a class="btn btn-primary btn-sm" href="/#search" target="_blank">Новый поиск</a>
+    </Actions>
+</PageHeader>
+
+<div class="stats-grid stats-grid-sm">
+    <StatCard Label="Всего" Value="@_total.ToString("N0")" Hint="запросов" Icon="🔎" Accent="blue" />
+    <StatCard Label="Завершено" Value="@_completed.ToString("N0")" Hint="успешных" Icon="✓" Accent="green" />
+    <StatCard Label="С ошибкой" Value="@_failed.ToString("N0")" Hint="требуют внимания" Icon="!" Accent="red" />
+    <StatCard Label="Результатов" Value="@_resultTotal.ToString("N0")" Hint="карточек в подборках" Icon="🚗" Accent="orange" />
+</div>
+
+<section class="panel">
+    <div class="filter-bar filter-bar-wrap">
+        <input class="form-control" placeholder="Марка, модель или ID…" @bind="_search" @onkeydown="OnSearchKeyDown" />
+        <select class="form-select" @bind="_statusFilter">
+            <option value="">Все статусы</option>
+            <option value="Completed">Завершено</option>
+            <option value="Failed">Ошибка</option>
+            <option value="Running">Выполняется</option>
+        </select>
+        <button class="btn btn-primary" @onclick="ApplyFiltersAsync">Применить</button>
+        <button class="btn btn-outline-secondary" @onclick="ResetFiltersAsync">Сбросить</button>
+        <span class="filter-count">Найдено: @_total</span>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-block compact"><span class="spinner"></span><p>Загружаем историю…</p></div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table data-table-wide">
+                <thead>
+                    <tr>
+                        <th>Запрос</th>
+                        <th>Фильтры</th>
+                        <th>Статус</th>
+                        <th>Рез.</th>
+                        <th>Курс</th>
+                        <th>Создан</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _items)
+                    {
+                        <tr>
+                            <td>
+                                <a class="table-title" href="/admin/searches/@item.Id">@item.BrandName</a>
+                                @if (!string.IsNullOrWhiteSpace(item.SeriesName))
+                                {
+                                    <small class="muted">@CarSpecTranslator.TranslateSeries(item.SeriesName)</small>
+                                }
+                                <small class="muted mono">@item.PublicId</small>
+                            </td>
+                            <td class="muted">
+                                @if (item.YearFrom is not null || item.YearTo is not null)
+                                {
+                                    <span>@(item.YearFrom?.ToString() ?? "…")–@(item.YearTo?.ToString() ?? "…")</span>
+                                }
+                                @if (item.PriceFromCny is not null || item.PriceToCny is not null)
+                                {
+                                    <span> · @DisplayFormat.PriceRange(item.PriceFromCny, item.PriceToCny)</span>
+                                }
+                                @if (item.MileageMaxKm is not null)
+                                {
+                                    <span> · до @DisplayFormat.Mileage(item.MileageMaxKm)</span>
+                                }
+                            </td>
+                            <td><StatusBadge Status="item.Status" /></td>
+                            <td>@item.ResultCount</td>
+                            <td class="muted">@DisplayFormat.RubRate(item.ExchangeRate)</td>
+                            <td class="muted">@DisplayFormat.Date(item.CreatedAt)</td>
+                            <td class="table-actions">
+                                <a href="/admin/searches/@item.Id">Детали</a>
+                                <a href="/search/@item.PublicId" target="_blank">Открыть ↗</a>
+                            </td>
+                        </tr>
+                    }
+                    @if (_items.Count == 0)
+                    {
+                        <tr><td colspan="7" class="table-empty">Запросы не найдены.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button class="btn btn-sm btn-outline-secondary" disabled="@(_page <= 1)" @onclick="PrevPageAsync">← Назад</button>
+            <span>Страница @_page из @_pageCount</span>
+            <button class="btn btn-sm btn-outline-secondary" disabled="@(_page >= _pageCount)" @onclick="NextPageAsync">Вперёд →</button>
+        </div>
+    }
+</section>
+
+@code {
+    private const int PageSize = 25;
+    private bool _loading = true;
+    private string _search = "";
+    private string _statusFilter = "";
+    private int _page = 1;
+    private int _pageCount = 1;
+    private int _total;
+    private int _completed;
+    private int _failed;
+    private int _resultTotal;
+    private List<SearchRequest> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+
+        var query = Db.SearchRequests.AsNoTracking().Include(x => x.SourceSite).AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var term = _search.Trim();
+            query = query.Where(x => x.BrandName.Contains(term) ||
+                                     (x.SeriesName != null && x.SeriesName.Contains(term)) ||
+                                     x.PublicId == term);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_statusFilter) && Enum.TryParse<SearchStatus>(_statusFilter, out var status))
+        {
+            query = query.Where(x => x.Status == status);
+        }
+
+        _total = await query.CountAsync();
+        _completed = await query.CountAsync(x => x.Status == SearchStatus.Completed);
+        _failed = await query.CountAsync(x => x.Status == SearchStatus.Failed);
+        _resultTotal = await query.SumAsync(x => x.ResultCount);
+        _pageCount = Math.Max(1, (int)Math.Ceiling(_total / (double)PageSize));
+        _page = Math.Clamp(_page, 1, _pageCount);
+
+        _items = await query
+            .OrderByDescending(x => x.CreatedAt)
+            .Skip((_page - 1) * PageSize)
+            .Take(PageSize)
+            .ToListAsync();
+
+        _loading = false;
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _search = "";
+        _statusFilter = "";
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task PrevPageAsync()
+    {
+        _page--;
+        await LoadAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        _page++;
+        await LoadAsync();
+    }
+
+    private async Task OnSearchKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            await ApplyFiltersAsync();
+        }
+    }
+}

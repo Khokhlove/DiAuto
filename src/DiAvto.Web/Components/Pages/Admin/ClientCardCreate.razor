@@ -1,0 +1,555 @@
+@page "/admin/listings/{Id:int}/card"
+@attribute [Authorize(Policy = "AdminPage.listings")]
+@rendermode InteractiveServer
+@inject ListingService ListingService
+@inject ClientCardService Cards
+@inject ServiceTariffService TariffService
+@inject CurrencyService CurrencyService
+@inject AppSettingsService Settings
+@inject AuditService Audit
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
+
+<PageTitle>Карточка клиента — DiAvto · Админка</PageTitle>
+
+@if (_loading)
+{
+    <div class="loading-block"><span class="spinner spinner-lg"></span><p>Готовим карточку…</p></div>
+}
+else if (_listing is null)
+{
+    <EmptyState Title="Автомобиль не найден" Description="Возможно, запись была удалена." Icon="🚗">
+        <a class="btn btn-primary" href="/admin/listings">К списку автомобилей</a>
+    </EmptyState>
+}
+else
+{
+    <PageHeader Eyebrow="Клиентская карточка" Title="@DisplayTitle"
+                Description="@($"ID источника: {_listing.ExternalId} · {_listing.SourceSite.Name}")">
+        <Actions>
+            <a class="btn btn-outline-secondary btn-sm" href="/admin/listings/@Id">← К автомобилю</a>
+            <a class="btn btn-outline-secondary btn-sm" href="/admin/tariffs">Тарифы</a>
+            <a class="btn btn-outline-secondary btn-sm" href="/admin/cards">Все карточки</a>
+        </Actions>
+    </PageHeader>
+
+    @if (_message is not null)
+    {
+        <div class="alert alert-success" role="alert">@_message</div>
+    }
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_error</div>
+    }
+
+    @if (_createdCard is not null)
+    {
+        <section class="panel card-created-panel">
+            <div class="panel-head">
+                <div>
+                    <span class="eyebrow">Готово</span>
+                    <h2>Карточка сформирована</h2>
+                </div>
+                <span class="status-badge status-completed"><span class="status-dot"></span>публичная ссылка</span>
+            </div>
+
+            <p class="card-created-note">
+                Отправьте клиенту эту ссылку. Он увидит фотографии, характеристики, страну нахождения и итоговую
+                стоимость под ключ — без расчётов и внутренних сумм.
+            </p>
+
+            <div class="copy-link-row">
+                <input class="form-control mono" readonly value="@CreatedCardUrl" />
+                <button class="btn btn-primary" @onclick="CopyCreatedLinkAsync">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="8" y="8" width="11" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
+                    Копировать
+                </button>
+                <a class="btn btn-outline-secondary" href="@CreatedCardUrl" target="_blank" rel="noopener noreferrer">Открыть ↗</a>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_publicBaseUrl))
+            {
+                <p class="field-help">Ссылка собрана по публичному адресу из настроек: <code>@_publicBaseUrl</code></p>
+            }
+        </section>
+    }
+
+    <div class="admin-two-col card-create-layout">
+        <div>
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <span class="eyebrow">Автомобиль</span>
+                        <h2>Что увидит клиент</h2>
+                    </div>
+                    <span class="badge-soft">@_listing.PhotoCount фото</span>
+                </div>
+
+                <div class="card-preview-strip">
+                    <img src="@MainPhoto" alt="@DisplayTitle" referrerpolicy="no-referrer"
+                         onerror="this.onerror=null;this.src='/img/car-placeholder.svg';" />
+                    <div>
+                        <h3>@DisplayTitle</h3>
+                        <p>
+                            @DisplayFormat.Mileage(_listing.MileageKm)
+                            <span>·</span>
+                            @(CarSpecTranslator.Translate(_listing.CityName) is { Length: > 0 } city ? city : "Китай")
+                            @if (_listing.Year is not null)
+                            {
+                                <span>·</span>@_listing.Year
+                            }
+                        </p>
+                        <span class="country-badge">Страна: @(_countryName is { Length: > 0 } country ? country : "Китай")</span>
+                    </div>
+                </div>
+
+                <div class="spec-grid card-preview-specs">
+                    <div class="spec-row"><span>Марка / модель</span><strong>@Display(CarSpecTranslator.TranslateBrand(_listing.BrandName)) / @Display(CarSpecTranslator.TranslateSeries(_listing.SeriesName))</strong></div>
+                    <div class="spec-row"><span>Год</span><strong>@(_listing.Year?.ToString() ?? "—")</strong></div>
+                    <div class="spec-row"><span>Пробег</span><strong>@DisplayFormat.Mileage(_listing.MileageKm)</strong></div>
+                    <div class="spec-row"><span>Двигатель</span><strong>@(_listing.Displacement ?? "—")</strong></div>
+                    <div class="spec-row"><span>Коробка</span><strong>@Display(CarSpecTranslator.Translate(_listing.Gearbox))</strong></div>
+                    <div class="spec-row"><span>Город в Китае</span><strong>@Display(CarSpecTranslator.Translate(_listing.CityName))</strong></div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <span class="eyebrow">Для клиента</span>
+                        <h2>Текст для клиента</h2>
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label>Имя клиента</label>
+                        <input class="form-control" @bind="_customerName" placeholder="Необязательно" />
+                        <small class="field-help">Если указано, появится на карточке как «Для: …».</small>
+                    </div>
+                    <div class="form-field">
+                        <label>Страна нахождения</label>
+                        <input class="form-control" @bind="_countryName" />
+                    </div>
+                    <div class="form-field span-2">
+                        <label>Комментарий менеджера</label>
+                        <textarea class="form-control" rows="3" @bind="_note"
+                                  placeholder="Например: поможем с проверкой и оформлением. Контакт: …"></textarea>
+                        <small class="field-help">Показывается клиенту под стоимостью. Здесь можно указать контакты и условия.</small>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <span class="eyebrow">Ранее созданные</span>
+                        <h2>Карточки этого автомобиля</h2>
+                    </div>
+                    <a class="panel-link" href="/admin/cards">Все →</a>
+                </div>
+
+                @if (_cards.Count == 0)
+                {
+                    <p class="muted">Для этого автомобиля ещё не создавалось карточек.</p>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Создана</th>
+                                    <th>Клиент</th>
+                                    <th>Город</th>
+                                    <th>Итого</th>
+                                    <th>Статус</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var card in _cards)
+                                {
+                                    <tr>
+                                        <td class="muted">@DisplayFormat.DateLocal(card.CreatedAt)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(card.CustomerName) ? "—" : card.CustomerName)</td>
+                                        <td>@card.DestinationCity</td>
+                                        <td><strong>@DisplayFormat.RubExact(card.TotalRub)</strong></td>
+                                        <td>
+                                            <span class="status-badge @(card.IsActive ? "status-completed" : "status-failed")">
+                                                <span class="status-dot"></span>@(card.IsActive ? "действует" : "отключена")
+                                            </span>
+                                        </td>
+                                        <td class="table-actions">
+                                            <a href="@CardUrl(card)" target="_blank" rel="noopener noreferrer">Открыть</a>
+                                            <button type="button" @onclick="() => CopyLinkAsync(card)">Копировать</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </section>
+        </div>
+
+        <aside class="admin-side">
+            <section class="panel card-quote-panel">
+                <div class="panel-head">
+                    <div>
+                        <span class="eyebrow">Расчёт</span>
+                        <h2>Стоимость для клиента</h2>
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label>Доставка до Владивостока</label>
+                        <input type="number" class="form-control" min="0" step="1" @bind="_deliveryToAmount" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Валюта доставки</label>
+                        <select class="form-select" @bind="_deliveryToCurrency">
+                            <option value="CNY">Юань</option>
+                            <option value="JPY">Иена</option>
+                            <option value="KRW">Вона</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Объём, см³</label>
+                        <input type="number" class="form-control" min="1" step="1" @bind="_engineCc" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Мощность, л.с.</label>
+                        <input type="number" class="form-control" min="1" step="1" @bind="_powerHp" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Год выпуска</label>
+                        <input type="number" class="form-control" min="1990" max="@DateTime.Now.Year" @bind="_vehicleYear" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Тип двигателя</label>
+                        <select class="form-select" @bind="_fuelKind">
+                            <option value="petrol">Бензиновый</option>
+                            <option value="diesel">Дизельный</option>
+                            <option value="petrol-hybrid">Бензиновый + электро</option>
+                            <option value="diesel-hybrid">Дизельный + электро</option>
+                            <option value="electric">Электрический</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Ввозит</label>
+                        <select class="form-select" @bind="_isLegalEntity">
+                            <option value="false">Физическое лицо (ЕТС)</option>
+                            <option value="true">Юридическое лицо (СТП)</option>
+                        </select>
+                    </div>
+                </div>
+
+                @if (!_isLegalEntity)
+                {
+                    <label class="checkbox-row">
+                        <input type="checkbox" @bind="_useResaleUtilization" />
+                        <span>Утильсбор для перепродажи</span>
+                    </label>
+                }
+
+                <label class="checkbox-row">
+                    <input type="checkbox" @bind="_includeDeliveryToCity" />
+                    <span>Доставка до города клиента</span>
+                </label>
+
+                @if (_includeDeliveryToCity)
+                {
+                    <div class="form-field">
+                        <label>Город клиента</label>
+                        <select class="form-select" @bind="_fromVladivostokTariffId" disabled="@(_fromVladivostokTariffs.Count == 0)">
+                            @if (_fromVladivostokTariffs.Count == 0)
+                            {
+                                <option value="0">Нет активных тарифов</option>
+                            }
+                            @foreach (var tariff in _fromVladivostokTariffs)
+                            {
+                                <option value="@tariff.Id">@tariff.Title — @DisplayFormat.RubExact(tariff.AmountRub)</option>
+                            }
+                        </select>
+                    </div>
+                }
+
+                @if (_includeDeliveryToCity && _fromVladivostokTariffs.Count == 0)
+                {
+                    <div class="alert alert-warning tariff-warning" role="alert">
+                        Нет активных тарифов доставки до города клиента.
+                        <a href="/admin/tariffs">Настроить тарифы</a>.
+                    </div>
+                }
+
+                <div class="panel-divider"></div>
+
+                @if (Breakdown is not null)
+                {
+                    <dl class="quote-breakdown">
+                        @foreach (var line in Breakdown.Lines)
+                        {
+                            <div>
+                                <dt>
+                                    @line.Title
+                                    @if (!string.IsNullOrWhiteSpace(line.Note))
+                                    {
+                                        <small>@line.Note</small>
+                                    }
+                                </dt>
+                                <dd>@DisplayFormat.RubExact(line.AmountRub)</dd>
+                            </div>
+                        }
+                        <div class="quote-total">
+                            <dt>Итого под ключ</dt>
+                            <dd>@DisplayFormat.RubExact(Breakdown.TotalRub)</dd>
+                        </div>
+                    </dl>
+
+                    <p class="field-help">
+                        Курс ЦБ: 1 ¥ = @DisplayFormat.RubRate(_rates.CnyRub). Клиент увидит только итоговую сумму.
+                    </p>
+                }
+
+                <div class="form-actions">
+                    <button class="btn btn-primary btn-block" @onclick="CreateAsync"
+                            disabled="@(_creating || Breakdown is null || (_includeDeliveryToCity && _fromVladivostokTariffs.Count == 0))">
+                        @if (_creating)
+                        {
+                            <span class="spinner"></span>
+                        }
+                        Сформировать карточку
+                    </button>
+                </div>
+            </section>
+        </aside>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private bool _loading = true;
+    private bool _creating;
+    private string? _message;
+    private string? _error;
+    private CarListing? _listing;
+    private ClientCard? _createdCard;
+    private List<ClientCard> _cards = [];
+    private List<ServiceTariff> _fromVladivostokTariffs = [];
+
+    private int _fromVladivostokTariffId;
+
+    private decimal _deliveryToAmount;
+    private string _deliveryToCurrency = "CNY";
+    private int _engineCc = 2000;
+    private int _powerHp = 150;
+    private int _vehicleYear = DateTime.UtcNow.Year - 3;
+    private string _fuelKind = "petrol";
+    private bool _isLegalEntity;
+    private bool _useResaleUtilization;
+    private bool _includeDeliveryToCity;
+
+    private string? _customerName;
+    private string _countryName = "Китай";
+    private string? _note;
+    private string _publicBaseUrl = "";
+    private string _createdBy = "";
+
+    private ImportCurrencyRates _rates = new();
+
+    private string DisplayTitle => _listing is null
+        ? "Автомобиль"
+        : CarSpecTranslator.BuildTitle(
+            _listing.BrandName,
+            _listing.SeriesName,
+            _listing.Year,
+            _listing.Displacement,
+            _listing.Gearbox,
+            _listing.Title);
+
+    private string MainPhoto => _listing?.Photos
+                                    .OrderBy(x => x.SortOrder)
+                                    .Select(x => x.Url)
+                                    .FirstOrDefault()
+                                ?? _listing?.ImageUrl
+                                ?? "/img/car-placeholder.svg";
+
+    private ServiceTariff? SelectedCity => _fromVladivostokTariffs.FirstOrDefault(x => x.Id == _fromVladivostokTariffId);
+
+    private ImportCostBreakdown? Breakdown => _listing is null
+        ? null
+        : ImportPricingCalculator.Calculate(new ImportPricingParameters
+        {
+            CarPrice = _listing.PriceCny,
+            CarCurrency = "CNY",
+            DeliveryToVladivostokAmount = _deliveryToAmount,
+            DeliveryToVladivostokCurrency = _deliveryToCurrency,
+            DeliveryToCityRub = SelectedCity?.AmountRub ?? 0m,
+            IncludeDeliveryToCity = _includeDeliveryToCity && SelectedCity is not null,
+            EngineCc = _engineCc,
+            PowerHp = _powerHp,
+            VehicleYear = _vehicleYear,
+            IsDiesel = _fuelKind is "diesel" or "diesel-hybrid",
+            IsElectric = _fuelKind == "electric",
+            IsLegalEntity = _isLegalEntity,
+            UseResaleUtilization = _useResaleUtilization,
+            Rates = _rates
+        });
+
+    private string CreatedCardUrl => _createdCard is null
+        ? ""
+        : CardUrl(_createdCard);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _createdCard = null;
+        _message = null;
+        _error = null;
+
+        _listing = await ListingService.GetByIdAsync(Id);
+        if (_listing is null)
+        {
+            _loading = false;
+            return;
+        }
+
+        var tariffs = await TariffService.GetActiveAsync();
+        _fromVladivostokTariffs = tariffs.Where(x => x.Kind == ServiceTariffKind.DeliveryFromVladivostok).ToList();
+        _fromVladivostokTariffId = ServiceTariffPicker.PickBestMatch(_fromVladivostokTariffs, null)?.Id ?? 0;
+
+        _engineCc = CarSpecsParser.ParseEngineCc(_listing.Displacement);
+        var parsedPower = CarSpecsParser.ParsePowerHp(_listing.Title);
+        _powerHp = parsedPower > 0 ? parsedPower : 150;
+        _vehicleYear = _listing.Year ?? DateTime.UtcNow.Year - 3;
+        var (isDiesel, isElectric) = CarSpecsParser.DetectFuel(_listing.FuelType, _listing.IsNewEnergy);
+        _fuelKind = isElectric ? "electric" : isDiesel ? "diesel" : "petrol";
+
+        var rates = await CurrencyService.GetRatesAsync(["CNY", "EUR", "JPY", "KRW"]);
+        _rates = new ImportCurrencyRates
+        {
+            CnyRub = rates["CNY"].Rate,
+            EurRub = rates["EUR"].Rate,
+            JpyRub = rates["JPY"].Rate,
+            KrwRub = rates["KRW"].Rate
+        };
+
+        _publicBaseUrl = await Settings.GetAsync("PublicBaseUrl");
+        _countryName = await Settings.GetAsync("ClientCardDefaultCountry", "Китай");
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _createdBy = authState.User.Identity?.Name ?? "";
+
+        await LoadCardsAsync();
+        _loading = false;
+    }
+
+    private async Task LoadCardsAsync()
+    {
+        _cards = await Cards.GetForListingAsync(Id);
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_listing is null || (_includeDeliveryToCity && _fromVladivostokTariffs.Count == 0))
+        {
+            return;
+        }
+
+        _creating = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            _createdCard = await Cards.CreateAsync(
+                _listing.Id,
+                _deliveryToAmount,
+                _deliveryToCurrency,
+                _engineCc,
+                _powerHp,
+                _vehicleYear,
+                _fuelKind is "diesel" or "diesel-hybrid",
+                _fuelKind == "electric",
+                _isLegalEntity,
+                _useResaleUtilization,
+                _includeDeliveryToCity,
+                _fromVladivostokTariffId > 0 ? _fromVladivostokTariffId : null,
+                _customerName,
+                _countryName,
+                _note,
+                _createdBy);
+
+            await Audit.LogAsync("cards.create",
+                $"Карточка /card/{_createdCard.PublicId} для автомобиля {_listing.ExternalId}: {_createdCard.TotalRub:N0} ₽.");
+
+            _message = "Карточка создана. Ссылку можно отправить клиенту.";
+            await LoadCardsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+
+    private async Task CopyCreatedLinkAsync()
+    {
+        if (_createdCard is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("diavtoCopyText", CreatedCardUrl);
+            _message = "Ссылка скопирована в буфер обмена.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Не удалось скопировать ссылку: {ex.Message}";
+        }
+    }
+
+    private async Task CopyLinkAsync(ClientCard card)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("diavtoCopyText", CardUrl(card));
+            _message = "Ссылка скопирована в буфер обмена.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Не удалось скопировать ссылку: {ex.Message}";
+        }
+    }
+
+    private string CardUrl(ClientCard card)
+    {
+        var baseUrl = string.IsNullOrWhiteSpace(_publicBaseUrl)
+            ? Navigation.BaseUri
+            : _publicBaseUrl;
+
+        return $"{baseUrl.TrimEnd('/')}/card/{card.PublicId}";
+    }
+
+    private static string Display(string? value)
+    {
+        var translated = CarSpecTranslator.Translate(value);
+        return string.IsNullOrWhiteSpace(translated) ? "—" : translated;
+    }
+}

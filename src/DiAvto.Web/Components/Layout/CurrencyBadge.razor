@@ -1,0 +1,26 @@
+@inject CurrencyService CurrencyService
+
+@if (_quote is not null)
+{
+    <div class="rate-chip" title="Курс ЦБ РФ на @DisplayFormat.Date(_quote.EffectiveDate)">
+        <span class="rate-chip-label">Юань / Рубль</span>
+        <strong>@DisplayFormat.RubRate(_quote.Rate)</strong>
+        <span class="rate-chip-source">ЦБ РФ</span>
+    </div>
+}
+
+@code {
+    private CurrencyQuote? _quote;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _quote = await CurrencyService.GetCurrentAsync();
+        }
+        catch
+        {
+            _quote = null;
+        }
+    }
+}

@@ -1,0 +1,252 @@
+@page "/admin"
+@attribute [Authorize(Policy = "AdminPage.dashboard")]
+@rendermode InteractiveServer
+@inject ApplicationDbContext Db
+@inject CurrencyService CurrencyService
+@inject ListingService ListingService
+@inject SearchExecutionService SearchExecutionService
+
+<PageTitle>Сводка — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Обзор" Title="Сводка"
+            Description="Главные показатели, последние запросы и состояние источников.">
+    <Actions>
+        <a class="btn btn-outline-secondary btn-sm" href="/" target="_blank">Открыть сайт ↗</a>
+        <a class="btn btn-primary btn-sm" href="/#search">Новый поиск</a>
+    </Actions>
+</PageHeader>
+
+@if (_loading)
+{
+    <div class="loading-block"><span class="spinner spinner-lg"></span><p>Собираем показатели…</p></div>
+}
+else
+{
+    <div class="stats-grid">
+        <StatCard Label="Поисков сегодня" Value="@_searchesToday.ToString()" Hint="за текущие сутки" Icon="🔎" Accent="blue" />
+        <StatCard Label="Всего поисков" Value="@_totalSearches.ToString("N0")" Hint="@($"{_completedSearches} завершено")" Icon="📊" Accent="green" />
+        <StatCard Label="Автомобилей в базе" Value="@_listings.ToString("N0")" Hint="уникальных объявлений" Icon="🚗" Accent="orange" />
+        <StatCard Label="Курс Юань/Рубль" Value="@(_quote is null ? "—" : DisplayFormat.RubRate(_quote.Rate))"
+                  Hint="@(_quote is null ? "нет данных" : $"ЦБ РФ · {DisplayFormat.Date(_quote.EffectiveDate)}")" Icon="₽" Accent="purple" />
+    </div>
+
+    <div class="dashboard-grid">
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <span class="eyebrow">Активность</span>
+                    <h2>Поиски за 7 дней</h2>
+                </div>
+                <a class="panel-link" href="/admin/searches">Все поиски →</a>
+            </div>
+
+            <div class="mini-chart">
+                @foreach (var point in _daily)
+                {
+                    <div class="mini-chart-col">
+                        <span class="mini-chart-value">@point.Count</span>
+                        <div class="mini-chart-bar-wrap">
+                            <div class="mini-chart-bar" style="height:@(point.Height)%"></div>
+                        </div>
+                        <span class="mini-chart-label">@point.Label</span>
+                    </div>
+                }
+            </div>
+
+            <div class="panel-divider"></div>
+
+            <div class="panel-head compact">
+                <div>
+                    <h3>Последние запросы</h3>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Запрос</th>
+                            <th>Статус</th>
+                            <th>Результаты</th>
+                            <th>Создан</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var request in _latestSearches)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@request.BrandName</strong>
+                                    @if (!string.IsNullOrWhiteSpace(request.SeriesName))
+                                    {
+                                        <span class="muted"> · @CarSpecTranslator.TranslateSeries(request.SeriesName)</span>
+                                    }
+                                </td>
+                                <td><StatusBadge Status="request.Status" /></td>
+                                <td>@request.ResultCount</td>
+                                <td class="muted">@DisplayFormat.Date(request.CreatedAt)</td>
+                                <td><a href="/admin/searches/@request.Id">Открыть →</a></td>
+                            </tr>
+                        }
+                        @if (_latestSearches.Count == 0)
+                        {
+                            <tr><td colspan="5" class="table-empty">Пока нет поисковых запросов.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="dashboard-side">
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <span class="eyebrow">Интеграции</span>
+                        <h2>Источники</h2>
+                    </div>
+                    <a class="panel-link" href="/admin/sources">Настроить →</a>
+                </div>
+
+                @foreach (var source in _sources)
+                {
+                    <div class="source-row">
+                        <div class="source-row-main">
+                            <span class="source-status @(source.IsEnabled ? "source-on" : "source-off")"></span>
+                            <div>
+                                <strong>@source.Name</strong>
+                                <span>@source.BaseUrl</span>
+                            </div>
+                        </div>
+                        <span class="source-health @(source.LastHealthCheckOk == true ? "health-ok" : source.LastHealthCheckOk == false ? "health-fail" : "health-unknown")">
+                            @(source.LastHealthCheckOk == true ? "Доступен" : source.LastHealthCheckOk == false ? "Ошибка" : "Не проверен")
+                        </span>
+                    </div>
+                }
+
+                @if (_sources.Count == 0)
+                {
+                    <p class="muted">Источники не настроены.</p>
+                }
+            </section>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <span class="eyebrow">Каталог</span>
+                        <h2>Бренды и модели</h2>
+                    </div>
+                    <a class="panel-link" href="/admin/catalog">Открыть →</a>
+                </div>
+                <div class="catalog-mini">
+                    <div><strong>@_brands</strong><span>брендов</span></div>
+                    <div><strong>@_series</strong><span>моделей</span></div>
+                    <div><strong>@_activeBrands</strong><span>активных</span></div>
+                </div>
+            </section>
+
+            @if (_quote is not null)
+            {
+                <section class="panel rate-panel">
+                    <div class="panel-head">
+                        <div>
+                            <span class="eyebrow">Валюта</span>
+                            <h2>Курс ЦБ РФ</h2>
+                        </div>
+                        <a class="panel-link" href="/admin/rates">История →</a>
+                    </div>
+                    <div class="rate-big">
+                        <span>1 юань</span>
+                        <strong>@DisplayFormat.RubRate(_quote.Rate)</strong>
+                        <small>@DisplayFormat.Date(_quote.EffectiveDate) · @_quote.Source</small>
+                    </div>
+                </section>
+            }
+        </div>
+    </div>
+
+    <section class="panel">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">Свежие данные</span>
+                <h2>Последние автомобили</h2>
+            </div>
+            <a class="panel-link" href="/admin/listings">Все автомобили →</a>
+        </div>
+
+        @if (_latestListings.Count == 0)
+        {
+            <p class="muted">Автомобили появятся после первого поиска.</p>
+        }
+        else
+        {
+            <div class="car-grid car-grid-admin">
+                @foreach (var listing in _latestListings)
+                {
+                    <CarCard Listing="listing" ShowSource="false" />
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private bool _loading = true;
+    private int _searchesToday;
+    private int _totalSearches;
+    private int _completedSearches;
+    private int _listings;
+    private int _brands;
+    private int _activeBrands;
+    private int _series;
+    private CurrencyQuote? _quote;
+    private List<SourceSite> _sources = [];
+    private List<SearchRequest> _latestSearches = [];
+    private List<CarListing> _latestListings = [];
+    private List<ChartPoint> _daily = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var today = DateTime.UtcNow.Date;
+
+        _searchesToday = await Db.SearchRequests.CountAsync(x => x.CreatedAt >= today);
+        _totalSearches = await Db.SearchRequests.CountAsync();
+        _completedSearches = await Db.SearchRequests.CountAsync(x => x.Status == SearchStatus.Completed);
+        _listings = await Db.CarListings.CountAsync();
+        _brands = await Db.Brands.CountAsync();
+        _activeBrands = await Db.Brands.CountAsync(x => x.IsActive);
+        _series = await Db.CarSeries.CountAsync();
+        _sources = await Db.SourceSites.AsNoTracking().OrderBy(x => x.Id).ToListAsync();
+        _quote = await CurrencyService.GetCurrentAsync();
+        _latestSearches = (await SearchExecutionService.GetRecentAsync(8)).ToList();
+        _latestListings = await ListingService.GetRecentAsync(6);
+
+        var since = today.AddDays(-6);
+        var requests = await Db.SearchRequests
+            .AsNoTracking()
+            .Where(x => x.CreatedAt >= since)
+            .Select(x => x.CreatedAt)
+            .ToListAsync();
+
+        var grouped = requests
+            .GroupBy(x => x.Date)
+            .ToDictionary(x => x.Key, x => x.Count());
+
+        var max = Math.Max(1, grouped.Values.DefaultIfEmpty(0).Max());
+        _daily = Enumerable.Range(0, 7)
+            .Select(offset =>
+            {
+                var date = today.AddDays(-6 + offset).Date;
+                var count = grouped.GetValueOrDefault(date);
+                return new ChartPoint(
+                    date.ToString("dd.MM"),
+                    count,
+                    count == 0 ? 4 : Math.Max(8, (int)Math.Round(count * 100d / max)));
+            })
+            .ToList();
+
+        _loading = false;
+    }
+
+    private sealed record ChartPoint(string Label, int Count, int Height);
+}

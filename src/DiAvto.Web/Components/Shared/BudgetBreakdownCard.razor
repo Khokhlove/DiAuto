@@ -1,0 +1,166 @@
+@using DiAvto.Web.Features.Pricing
+
+@if (Plan is not null)
+{
+    <div class="budget-breakdown @(Compact ? "budget-breakdown-compact" : "")">
+        @if (!string.IsNullOrWhiteSpace(Title))
+        {
+            <div class="budget-breakdown-head">
+                <h3>@Title</h3>
+            </div>
+        }
+
+        <dl class="quote-breakdown">
+            @if (Plan.HasBudget)
+            {
+                <div class="budget-line budget-line-start">
+                    <dt>@BudgetLabel</dt>
+                    <dd>@BudgetValue</dd>
+                </div>
+            }
+
+            @foreach (var line in Plan.Lines)
+            {
+                <div class="budget-line">
+                    <dt>
+                        @line.Title
+                        @if (!string.IsNullOrWhiteSpace(line.Note))
+                        {
+                            <span class="budget-expense-kind">@line.Note</span>
+                        }
+                    </dt>
+                    <dd>
+                        @if (DisplayCurrency == PriceCurrency.Cny)
+                        {
+                            <span>− @DisplayFormat.Cny(LineCny(line) ?? 0m)</span>
+                            <small class="budget-expense-secondary">@DisplayFormat.RubExact(line.AmountRub)</small>
+                        }
+                        else
+                        {
+                            <span>− @DisplayFormat.RubExact(line.AmountRub)</span>
+                        }
+                    </dd>
+                </div>
+            }
+
+            @if (Plan.Lines.Count > 0)
+            {
+                <div class="budget-line budget-line-expenses">
+                    <dt>Итого расходы</dt>
+                    <dd>
+                        @if (DisplayCurrency == PriceCurrency.Cny)
+                        {
+                            <span>@DisplayFormat.Cny(ExpensesCny)</span>
+                            <small class="budget-expense-secondary">@DisplayFormat.RubExact(Plan.ExpensesRub)</small>
+                        }
+                        else
+                        {
+                            <span>@DisplayFormat.RubExact(Plan.ExpensesRub)</span>
+                        }
+                    </dd>
+                </div>
+            }
+
+            @if (Plan.HasBudget)
+            {
+                <div class="quote-total">
+                    <dt>Остаток на автомобиль</dt>
+                    <dd>@CarBudgetValue</dd>
+                </div>
+
+                @if (CarBudgetSecondaryValue is { Length: > 0 })
+                {
+                    <div class="budget-line budget-line-cny">
+                        <dt>@CarBudgetSecondaryLabel</dt>
+                        <dd>@CarBudgetSecondaryValue</dd>
+                    </div>
+                }
+            }
+        </dl>
+
+        @if (Plan.IsTooLow)
+        {
+            <div class="budget-alert budget-alert-danger">
+                Бюджет меньше суммы расходов. Увеличьте бюджет или измените параметры.
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter]
+    public SearchBudgetPlan? Plan { get; set; }
+
+    [Parameter]
+    public string Title { get; set; } = "Структура расходов";
+
+    [Parameter]
+    public bool Compact { get; set; }
+
+    private PriceCurrency DisplayCurrency => Plan is null
+        ? PriceCurrency.Rub
+        : Plan.BudgetFromRub is not null || Plan.BudgetToRub is not null
+            ? PriceCurrency.Rub
+            : Plan.Currency;
+
+    private decimal? BudgetFrom => DisplayCurrency == PriceCurrency.Rub
+        ? Plan?.BudgetFromRub
+        : Plan?.BudgetFromCny;
+
+    private decimal? BudgetTo => DisplayCurrency == PriceCurrency.Rub
+        ? Plan?.BudgetToRub
+        : Plan?.BudgetToCny;
+
+    private decimal? CarBudgetFrom => DisplayCurrency == PriceCurrency.Rub
+        ? Plan?.CarBudgetFromRub
+        : Plan?.CarBudgetFromCny;
+
+    private decimal? CarBudgetTo => DisplayCurrency == PriceCurrency.Rub
+        ? Plan?.CarBudgetToRub
+        : Plan?.CarBudgetToCny;
+
+    private decimal ExpensesCny => Plan is null
+        ? 0m
+        : Plan.ExpensesCny ?? Plan.Lines.Sum(x => LineCny(x) ?? 0m);
+
+    private string BudgetLabel => BudgetFrom is not null && BudgetTo is not null
+        ? "Бюджет клиента"
+        : BudgetFrom is not null
+            ? "Бюджет от"
+            : "Бюджет до";
+
+    private string BudgetValue => FormatRange(BudgetFrom, BudgetTo, DisplayCurrency);
+
+    private string CarBudgetValue => FormatRange(CarBudgetFrom, CarBudgetTo, DisplayCurrency);
+
+    private string CarBudgetSecondaryLabel => DisplayCurrency == PriceCurrency.Rub
+        ? "В юанях по курсу"
+        : "В рублях по курсу";
+
+    private string CarBudgetSecondaryValue => DisplayCurrency == PriceCurrency.Rub
+        ? FormatRange(Plan?.CarBudgetFromCny, Plan?.CarBudgetToCny, PriceCurrency.Cny)
+        : FormatRange(Plan?.CarBudgetFromRub, Plan?.CarBudgetToRub, PriceCurrency.Rub);
+
+    private decimal? LineCny(ImportCostLine line) => Plan is null
+        ? null
+        : PricingCalculator.TryRubToCny(line.AmountRub, Plan.ExchangeRate, 0m);
+
+    private static string FormatRange(decimal? from, decimal? to, PriceCurrency currency)
+    {
+        string Money(decimal value) => currency == PriceCurrency.Rub
+            ? DisplayFormat.RubExact(value)
+            : DisplayFormat.Cny(value);
+
+        if (from is not null && to is not null)
+        {
+            return $"{Money(from.Value)} – {Money(to.Value)}";
+        }
+
+        if (from is not null)
+        {
+            return Money(from.Value);
+        }
+
+        return to is not null ? Money(to.Value) : string.Empty;
+    }
+}
