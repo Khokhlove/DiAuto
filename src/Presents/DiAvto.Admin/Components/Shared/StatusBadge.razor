@@ -1,0 +1,21 @@
+@using DiAvto.UI.Formatting
+
+<span class="status-badge @StatusClass">
+    <span class="status-dot"></span>
+    @DisplayFormat.StatusRu(Status)
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public SearchStatus Status { get; set; }
+
+    private string StatusClass => Status switch
+    {
+        SearchStatus.Completed => "status-completed",
+        SearchStatus.Running => "status-running",
+        SearchStatus.Failed => "status-failed",
+        _ => "status-pending"
+    };
+}
+
+

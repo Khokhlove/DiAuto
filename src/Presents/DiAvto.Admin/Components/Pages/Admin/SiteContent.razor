@@ -1,0 +1,765 @@
+@page "/admin/site-content"
+@attribute [Authorize(Policy = "AdminPage.sitecontent")]
+@rendermode InteractiveServer
+@inject DiAvtoDbContext Db
+@inject AuditService Audit
+@inject IJSRuntime JS
+
+<PageTitle>Контент сайта — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Публичный сайт" Title="Контент сайта"
+            Description="Настройки, частые вопросы и настраиваемые секции визитки." />
+
+@if (_message is not null)
+{
+    <div class="alert alert-success" role="alert">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+<div class="content-tabs">
+    <button type="button" class="tab @(_tab == "settings" ? "active" : "")" @onclick='() => _tab = "settings"'>Настройки</button>
+    <button type="button" class="tab @(_tab == "faq" ? "active" : "")" @onclick='() => _tab = "faq"'>Частые вопросы</button>
+    <button type="button" class="tab @(_tab == "sections" ? "active" : "")" @onclick='() => _tab = "sections"'>Секции</button>
+</div>
+
+@if (_loading)
+{
+    <div class="loading-block compact"><span class="spinner"></span><p>Загружаем контент…</p></div>
+}
+else if (_tab == "settings")
+{
+    <section class="panel">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">Параметры</span>
+                <h2>Настройки сайта</h2>
+            </div>
+            <button class="btn btn-primary btn-sm" @onclick="SaveSettingsAsync" disabled="@_saving">Сохранить все</button>
+        </div>
+
+        <div class="table-wrap">
+            <table class="data-table data-table-wide">
+                <thead>
+                    <tr>
+                        <th>Ключ</th>
+                        <th>Значение</th>
+                        <th>Описание</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var setting in _settings)
+                    {
+                        <tr>
+                            <td class="mono">@setting.Key</td>
+                            <td><input class="form-control" @bind="setting.Value" /></td>
+                            <td><input class="form-control" @bind="setting.Description" /></td>
+                            <td class="table-actions">
+                                <button type="button" class="danger" @onclick="() => DeleteSettingAsync(setting)">Удалить</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="panel-divider"></div>
+
+        <h3>Добавить параметр</h3>
+        <div class="form-grid">
+            <div class="form-field">
+                <label>Ключ</label>
+                <input class="form-control mono" @bind="_newSettingKey" placeholder="phone" />
+            </div>
+            <div class="form-field">
+                <label>Значение</label>
+                <input class="form-control" @bind="_newSettingValue" />
+            </div>
+            <div class="form-field span-2">
+                <label>Описание</label>
+                <input class="form-control" @bind="_newSettingDescription" />
+            </div>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-outline-secondary" @onclick="AddSettingAsync">Добавить</button>
+        </div>
+    </section>
+}
+else if (_tab == "faq")
+{
+    <section class="panel">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">Вопросы</span>
+                <h2>Частые вопросы</h2>
+            </div>
+            <button class="btn btn-primary btn-sm" @onclick="StartFaqCreate">Добавить вопрос</button>
+        </div>
+
+        @if (_faq.Count == 0)
+        {
+            <EmptyState Title="Вопросов нет" Description="Добавьте первый вопрос." Icon="❓" />
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data-table data-table-wide">
+                    <thead>
+                        <tr>
+                            <th>Вопрос</th>
+                            <th>Ответ</th>
+                            <th>Видимость</th>
+                            <th>Порядок</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _faq)
+                        {
+                            <tr>
+                                <td>@item.Question</td>
+                                <td>@Shorten(item.Answer, 100)</td>
+                                <td>
+                                    <button type="button" class="status-badge @(item.IsVisible ? "status-completed" : "status-failed")"
+                                            @onclick="() => ToggleFaqAsync(item)">
+                                        <span class="status-dot"></span>@(item.IsVisible ? "виден" : "скрыт")
+                                    </button>
+                                </td>
+                                <td>@item.SortOrder</td>
+                                <td class="table-actions">
+                                    <button type="button" @onclick="() => StartFaqEdit(item)">Изменить</button>
+                                    <button type="button" class="danger" @onclick="() => DeleteFaqAsync(item)">Удалить</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    @if (_faqEdit is not null)
+    {
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <span class="eyebrow">Редактирование</span>
+                    <h2>@(_faqEdit.Id == 0 ? "Новый вопрос" : "Вопрос")</h2>
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => _faqEdit = null">Закрыть</button>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-field span-2">
+                    <label>Вопрос</label>
+                    <input class="form-control" @bind="_faqEdit.Question" />
+                </div>
+                <div class="form-field span-2">
+                    <label>Ответ</label>
+                    <textarea class="form-control" rows="4" @bind="_faqEdit.Answer"></textarea>
+                </div>
+                <div class="form-field">
+                    <label>Порядок сортировки</label>
+                    <input class="form-control" type="number" @bind="_faqEdit.SortOrder" />
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <label class="checkbox-row"><input type="checkbox" @bind="_faqEdit.IsVisible" /> Показывать на сайте</label>
+                <button class="btn btn-primary" @onclick="SaveFaqAsync" disabled="@_saving">Сохранить</button>
+            </div>
+        </section>
+    }
+}
+else
+{
+    <div class="admin-two-col">
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <span class="eyebrow">Страницы</span>
+                    <h2>Секции</h2>
+                </div>
+                <button class="btn btn-primary btn-sm" @onclick="StartSectionCreate">Добавить</button>
+            </div>
+
+            @if (_sections.Count == 0)
+            {
+                <EmptyState Title="Секций нет" Description="Добавьте первую секцию." Icon="🧩" />
+            }
+            else
+            {
+                <div class="source-list">
+                    @foreach (var section in _sections)
+                    {
+                        <button type="button" class="source-card @(section.Id == _selectedSection?.Id ? "active" : "")"
+                                @onclick="() => SelectSection(section)">
+                            <div class="source-card-head">
+                                <span class="source-avatar">@Initial(section.Slug)</span>
+                                <div>
+                                    <strong>@section.Title</strong>
+                                    <span>@section.Page / @section.Slug</span>
+                                </div>
+                                <span class="source-toggle @(section.IsVisible ? "on" : "")">@(section.IsVisible ? "вкл" : "выкл")</span>
+                            </div>
+                        </button>
+                    }
+                </div>
+            }
+        </section>
+
+        <div class="admin-side">
+            @if (_sectionEdit is not null)
+            {
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <span class="eyebrow">Секция</span>
+                            <h2>@(_sectionEdit.Id == 0 ? "Новая секция" : _sectionEdit.Title)</h2>
+                        </div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label>Страница</label>
+                            <input class="form-control mono" @bind="_sectionEdit.Page" placeholder="index" />
+                        </div>
+                        <div class="form-field">
+                            <label>Ключ (slug)</label>
+                            <input class="form-control mono" @bind="_sectionEdit.Slug" placeholder="guarantees" />
+                        </div>
+                        <div class="form-field span-2">
+                            <label>Заголовок</label>
+                            <input class="form-control" @bind="_sectionEdit.Title" />
+                        </div>
+                        <div class="form-field span-2">
+                            <label>Подзаголовок</label>
+                            <textarea class="form-control" rows="2" @bind="_sectionEdit.Subtitle"></textarea>
+                        </div>
+                        <div class="form-field">
+                            <label>Порядок</label>
+                            <input class="form-control" type="number" @bind="_sectionEdit.SortOrder" />
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <label class="checkbox-row"><input type="checkbox" @bind="_sectionEdit.IsVisible" /> Видима</label>
+                        <button class="btn btn-primary" @onclick="SaveSectionAsync" disabled="@_saving">Сохранить</button>
+                        <button class="btn btn-outline-secondary" @onclick="CancelSectionEdit">Отмена</button>
+                        @if (_sectionEdit.Id != 0)
+                        {
+                            <button class="btn btn-outline-danger" @onclick="() => DeleteSectionAsync(_sectionEdit)">Удалить</button>
+                        }
+                    </div>
+                </section>
+            }
+            else
+            {
+                <section class="panel">
+                    <p class="aside-note">Выберите секцию слева, чтобы изменить её или карточки внутри.</p>
+                </section>
+            }
+
+            @if (_selectedSection is not null)
+            {
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <span class="eyebrow">Карточки</span>
+                            <h2>@_selectedSection.Title</h2>
+                        </div>
+                        <button class="btn btn-primary btn-sm" @onclick="StartItemCreate">Добавить карточку</button>
+                    </div>
+
+                    @if (_items.Count == 0)
+                    {
+                        <p class="aside-note">В секции пока нет карточек.</p>
+                    }
+                    else
+                    {
+                        <div class="table-wrap">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Заголовок</th>
+                                        <th>Порядок</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in _items)
+                                    {
+                                        <tr>
+                                            <td>@item.Title</td>
+                                            <td>@item.SortOrder</td>
+                                            <td class="table-actions">
+                                                <button type="button" @onclick="() => StartItemEdit(item)">Изменить</button>
+                                                <button type="button" class="danger" @onclick="() => DeleteItemAsync(item)">Удалить</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </section>
+            }
+        </div>
+    </div>
+
+    @if (_itemEdit is not null)
+    {
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <span class="eyebrow">Карточка</span>
+                    <h2>@(_itemEdit.Id == 0 ? "Новая карточка" : _itemEdit.Title)</h2>
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => _itemEdit = null">Закрыть</button>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-field span-2">
+                    <label>Заголовок</label>
+                    <input class="form-control" @bind="_itemEdit.Title" />
+                </div>
+                <div class="form-field span-2">
+                    <label>Описание (каждый пункт с новой строки)</label>
+                    <textarea class="form-control" rows="5" @bind="_itemEdit.Description"></textarea>
+                </div>
+                <div class="form-field span-2">
+                    <label>Ссылка на изображение</label>
+                    <input class="form-control mono" @bind="_itemEdit.ImageUrl" />
+                </div>
+                <div class="form-field">
+                    <label>Иконка</label>
+                    <input class="form-control" @bind="_itemEdit.IconName" />
+                </div>
+                <div class="form-field">
+                    <label>Ссылка</label>
+                    <input class="form-control" @bind="_itemEdit.Url" />
+                </div>
+                <div class="form-field">
+                    <label>Порядок</label>
+                    <input class="form-control" type="number" @bind="_itemEdit.SortOrder" />
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <label class="checkbox-row"><input type="checkbox" @bind="_itemEdit.IsVisible" /> Видима</label>
+                <button class="btn btn-primary" @onclick="SaveItemAsync" disabled="@_saving">Сохранить</button>
+                <button class="btn btn-outline-secondary" @onclick="() => _itemEdit = null">Отмена</button>
+            </div>
+        </section>
+    }
+}
+
+@code {
+    private string _tab = "settings";
+    private bool _loading = true;
+    private bool _saving;
+    private string? _message;
+    private string? _error;
+
+    private List<SiteSetting> _settings = [];
+    private string _newSettingKey = "";
+    private string _newSettingValue = "";
+    private string _newSettingDescription = "";
+
+    private List<FaqItem> _faq = [];
+    private FaqItem? _faqEdit;
+
+    private List<ContentSection> _sections = [];
+    private ContentSection? _selectedSection;
+    private ContentSection? _sectionEdit;
+    private List<ContentSectionItem> _items = [];
+    private ContentSectionItem? _itemEdit;
+    private string? _selectedSlugBeforeEdit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAllAsync();
+    }
+
+    private async Task LoadAllAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            _settings = await Db.SiteSettings.OrderBy(x => x.Key).ToListAsync();
+            _faq = await Db.FaqItems.OrderBy(x => x.SortOrder).ToListAsync();
+            _sections = await Db.ContentSections
+                .OrderBy(x => x.Page)
+                .ThenBy(x => x.SortOrder)
+                .ToListAsync();
+
+            if (_selectedSection is not null)
+            {
+                _selectedSection = _sections.FirstOrDefault(x => x.Id == _selectedSection.Id);
+                await LoadItemsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        _saving = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("site.settings", "Настройки публичного сайта сохранены.");
+            _message = "Настройки сохранены.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task AddSettingAsync()
+    {
+        _error = null;
+        _message = null;
+
+        var key = (_newSettingKey ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            _error = "Укажите ключ параметра.";
+            return;
+        }
+
+        if (await Db.SiteSettings.AnyAsync(x => x.Key == key))
+        {
+            _error = "Параметр с таким ключом уже существует.";
+            return;
+        }
+
+        Db.SiteSettings.Add(new SiteSetting
+        {
+            Key = key,
+            Value = _newSettingValue,
+            Description = _newSettingDescription
+        });
+
+        await Db.SaveChangesAsync();
+        await Audit.LogAsync("site.settings.add", $"Добавлен параметр {key}.");
+        _newSettingKey = "";
+        _newSettingValue = "";
+        _newSettingDescription = "";
+        _message = "Параметр добавлен.";
+        await LoadAllAsync();
+    }
+
+    private async Task DeleteSettingAsync(SiteSetting setting)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"Удалить параметр «{setting.Key}»?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        Db.SiteSettings.Remove(setting);
+        await Db.SaveChangesAsync();
+        await Audit.LogAsync("site.settings.delete", $"Удалён параметр {setting.Key}.");
+        _message = "Параметр удалён.";
+        await LoadAllAsync();
+    }
+
+    private void StartFaqCreate()
+    {
+        _faqEdit = new FaqItem
+        {
+            IsVisible = true,
+            SortOrder = (_faq.Count == 0 ? 0 : _faq.Max(x => x.SortOrder)) + 1
+        };
+    }
+
+    private void StartFaqEdit(FaqItem item) => _faqEdit = item;
+
+    private async Task SaveFaqAsync()
+    {
+        if (_faqEdit is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+
+        try
+        {
+            if (_faqEdit.Id == 0)
+            {
+                Db.FaqItems.Add(_faqEdit);
+            }
+            else
+            {
+                Db.FaqItems.Update(_faqEdit);
+            }
+
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("site.faq.save", $"Вопрос «{_faqEdit.Question}» сохранён.");
+            _message = "Вопрос сохранён.";
+            _faqEdit = null;
+            await LoadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ToggleFaqAsync(FaqItem item)
+    {
+        var entity = await Db.FaqItems.FirstAsync(x => x.Id == item.Id);
+        entity.IsVisible = !entity.IsVisible;
+        await Db.SaveChangesAsync();
+        _message = entity.IsVisible ? "Вопрос показан." : "Вопрос скрыт.";
+        await LoadAllAsync();
+    }
+
+    private async Task DeleteFaqAsync(FaqItem item)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"Удалить вопрос «{item.Question}»?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        Db.FaqItems.Remove(item);
+        await Db.SaveChangesAsync();
+        await Audit.LogAsync("site.faq.delete", $"Вопрос «{item.Question}» удалён.");
+        _message = "Вопрос удалён.";
+        await LoadAllAsync();
+    }
+
+    private async Task SelectSection(ContentSection section)
+    {
+        _selectedSection = section;
+        _sectionEdit = section;
+        _itemEdit = null;
+        _selectedSlugBeforeEdit = section.Slug;
+        await LoadItemsAsync();
+    }
+
+    private async Task LoadItemsAsync()
+    {
+        _items = _selectedSection is null
+            ? []
+            : await Db.ContentSectionItems
+                .Where(x => x.Section == _selectedSection.Slug)
+                .OrderBy(x => x.SortOrder)
+                .ToListAsync();
+    }
+
+    private void StartSectionCreate()
+    {
+        _selectedSlugBeforeEdit = null;
+        _selectedSection = null;
+        _items = [];
+        _itemEdit = null;
+        _sectionEdit = new ContentSection
+        {
+            Page = "index",
+            IsVisible = true,
+            SortOrder = (_sections.Count == 0 ? 0 : _sections.Max(x => x.SortOrder)) + 1
+        };
+    }
+
+    private void CancelSectionEdit()
+    {
+        _sectionEdit = null;
+        _selectedSlugBeforeEdit = null;
+    }
+
+    private async Task SaveSectionAsync()
+    {
+        if (_sectionEdit is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_sectionEdit.Page) || string.IsNullOrWhiteSpace(_sectionEdit.Slug))
+            {
+                _error = "Укажите страницу и ключ секции.";
+                return;
+            }
+
+            if (_sectionEdit.Id == 0)
+            {
+                Db.ContentSections.Add(_sectionEdit);
+            }
+            else
+            {
+                Db.ContentSections.Update(_sectionEdit);
+
+                if (!string.IsNullOrWhiteSpace(_selectedSlugBeforeEdit) &&
+                    !string.Equals(_selectedSlugBeforeEdit, _sectionEdit.Slug, StringComparison.Ordinal))
+                {
+                    var items = await Db.ContentSectionItems
+                        .Where(x => x.Section == _selectedSlugBeforeEdit)
+                        .ToListAsync();
+
+                    foreach (var item in items)
+                    {
+                        item.Section = _sectionEdit.Slug;
+                    }
+                }
+            }
+
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("site.section.save", $"Секция «{_sectionEdit.Title}» сохранена.");
+            _message = "Секция сохранена.";
+            _selectedSection = _sectionEdit;
+            _selectedSlugBeforeEdit = _sectionEdit.Slug;
+            await LoadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteSectionAsync(ContentSection section)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            $"Удалить секцию «{section.Title}»? Карточки этой секции тоже будут удалены.");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            var items = await Db.ContentSectionItems
+                .Where(x => x.Section == section.Slug)
+                .ToListAsync();
+
+            Db.ContentSectionItems.RemoveRange(items);
+            Db.ContentSections.Remove(section);
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("site.section.delete", $"Секция «{section.Title}» удалена.");
+            _message = "Секция удалена.";
+            _selectedSection = null;
+            _sectionEdit = null;
+            await LoadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private void StartItemCreate()
+    {
+        if (_selectedSection is null)
+        {
+            return;
+        }
+
+        _itemEdit = new ContentSectionItem
+        {
+            Section = _selectedSection.Slug,
+            IsVisible = true,
+            SortOrder = (_items.Count == 0 ? 0 : _items.Max(x => x.SortOrder)) + 1
+        };
+    }
+
+    private void StartItemEdit(ContentSectionItem item) => _itemEdit = item;
+
+    private async Task SaveItemAsync()
+    {
+        if (_itemEdit is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+
+        try
+        {
+            if (_itemEdit.Id == 0)
+            {
+                Db.ContentSectionItems.Add(_itemEdit);
+            }
+            else
+            {
+                Db.ContentSectionItems.Update(_itemEdit);
+            }
+
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("site.item.save", $"Карточка «{_itemEdit.Title}» сохранена.");
+            _message = "Карточка сохранена.";
+            _itemEdit = null;
+            await LoadItemsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteItemAsync(ContentSectionItem item)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"Удалить карточку «{item.Title}»?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        Db.ContentSectionItems.Remove(item);
+        await Db.SaveChangesAsync();
+        await Audit.LogAsync("site.item.delete", $"Карточка «{item.Title}» удалена.");
+        _message = "Карточка удалена.";
+        await LoadItemsAsync();
+    }
+
+    private static string Shorten(string? value, int length) =>
+        string.IsNullOrWhiteSpace(value)
+            ? "—"
+            : value.Length <= length
+                ? value
+                : value[..length].TrimEnd() + "…";
+
+    private static string Initial(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? "?"
+            : value[..Math.Min(2, value.Length)].ToUpperInvariant();
+}

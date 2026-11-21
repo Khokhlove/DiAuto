@@ -1,0 +1,180 @@
+@page "/admin/rates"
+@attribute [Authorize(Policy = "AdminPage.rates")]
+@rendermode InteractiveServer
+@inject CurrencyService CurrencyService
+@inject AppSettingsService Settings
+@inject AuditService Audit
+
+<PageTitle>Курс валют — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Валюта" Title="Курс Юань / Рубль"
+            Description="Источник — официальный курс ЦБ РФ. Фон обновляется каждые 6 часов.">
+    <Actions>
+        <button class="btn btn-primary btn-sm" @onclick="RefreshAsync" disabled="@_refreshing">
+            @if (_refreshing)
+            {
+                <span class="spinner"></span>
+            }
+            Обновить курс
+        </button>
+    </Actions>
+</PageHeader>
+
+@if (_message is not null)
+{
+    <div class="alert alert-success">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_loading)
+{
+    <div class="loading-block"><span class="spinner spinner-lg"></span><p>Загружаем курс…</p></div>
+}
+else
+{
+    <div class="admin-two-col rates-layout">
+        <section class="panel rate-hero-panel">
+            <div class="panel-head">
+                <div><span class="eyebrow">Актуально</span><h2>1 китайский юань</h2></div>
+                <span class="status-badge status-completed"><span class="status-dot"></span>@(_quote?.Source ?? "—")</span>
+            </div>
+
+            <div class="rate-hero">
+                <strong>@(_quote is null ? "—" : DisplayFormat.RubRate(_quote.Rate))</strong>
+                <span>российских рублей</span>
+            </div>
+
+            <div class="tech-info">
+                <div><span>Дата курса</span><strong>@(_quote is null ? "—" : DisplayFormat.Date(_quote.EffectiveDate))</strong></div>
+                <div><span>Получен</span><strong>@(_quote is null ? "—" : DisplayFormat.Date(_quote.FetchedAt))</strong></div>
+                <div><span>Резервный курс</span><strong>@(_quote?.IsFallback == true ? "да" : "нет")</strong></div>
+            </div>
+
+            <div class="panel-divider"></div>
+
+            <div class="form-field">
+                <label>Наценка к курсу при пересчёте цен, %</label>
+                <div class="inline-field">
+                    <input type="number" class="form-control" min="0" max="100" step="0.1" @bind="_markup" />
+                    <button class="btn btn-primary" @onclick="SaveMarkupAsync" disabled="@_saving">Сохранить</button>
+                </div>
+                <small class="field-help">Например, 3% добавят к рублёвому ориентиру небольшую буферную наценку. На цену в юанях не влияет.</small>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div><span class="eyebrow">История</span><h2>Последние значения</h2></div>
+                <span class="badge-soft">@_history.Count записей</span>
+            </div>
+
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead><tr><th>Дата</th><th>Курс</th><th>Δ</th><th>Источник</th><th>Получен</th></tr></thead>
+                    <tbody>
+                        @for (var i = 0; i < _history.Count; i++)
+                        {
+                            var row = _history[i];
+                            var next = i + 1 < _history.Count ? _history[i + 1] : null;
+                            var delta = next is null ? (decimal?)null : row.Rate - next.Rate;
+                            <tr>
+                                <td>@DisplayFormat.Date(row.EffectiveDate)</td>
+                                <td><strong>@row.Rate.ToString("N4", System.Globalization.CultureInfo.GetCultureInfo("ru-RU"))</strong></td>
+                                <td class="@(delta is null ? "muted" : delta > 0 ? "delta-up" : delta < 0 ? "delta-down" : "muted")">
+                                    @(delta is null ? "—" : (delta > 0 ? "+" : "") + delta.Value.ToString("N4", System.Globalization.CultureInfo.GetCultureInfo("ru-RU")))
+                                </td>
+                                <td>@row.Source</td>
+                                <td class="muted">@DisplayFormat.Date(row.FetchedAt)</td>
+                            </tr>
+                        }
+                        @if (_history.Count == 0)
+                        {
+                            <tr><td colspan="5" class="table-empty">История пока пуста.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _refreshing;
+    private bool _saving;
+    private string? _message;
+    private string? _error;
+    private CurrencyQuote? _quote;
+    private List<CurrencyRate> _history = [];
+    private decimal _markup;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        _quote = await CurrencyService.GetCurrentAsync();
+        _history = (await CurrencyService.GetHistoryAsync(40)).ToList();
+        _markup = await Settings.GetDecimalAsync("PriceMarkupPercent", 0m);
+    }
+
+    private async Task RefreshAsync()
+    {
+        _refreshing = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            await CurrencyService.RefreshAsync();
+            await Audit.LogAsync("currency.refresh", "Курс ЦБ РФ обновлён вручную.");
+            _message = "Курс обновлён.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private async Task SaveMarkupAsync()
+    {
+        _saving = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            if (_markup < 0 || _markup > 100)
+            {
+                _error = "Наценка должна быть в диапазоне 0–100%.";
+                return;
+            }
+
+            await Settings.SetAsync("PriceMarkupPercent",
+                _markup.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "Наценка к курсу ЦБ при пересчёте цены, %");
+            await Audit.LogAsync("settings.markup", $"Наценка изменена на {_markup}%.");
+            _message = "Наценка сохранена.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}
+

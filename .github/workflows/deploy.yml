@@ -1,0 +1,72 @@
+name: Deploy (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Введите deploy, чтобы подтвердить публикацию на production'
+        required: true
+        default: ''
+
+jobs:
+  deploy:
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish site
+        run: dotnet publish src/Presents/DiAvto.Site/DiAvto.Site.csproj -c Release -r linux-x64 --self-contained true -o publish/site
+
+      - name: Publish admin
+        run: dotnet publish src/Presents/DiAvto.Admin/DiAvto.Admin.csproj -c Release -r linux-x64 --self-contained true -o publish/admin
+
+      - name: Pack
+        run: |
+          tar -czf diavto-site.tar.gz -C publish/site .
+          tar -czf diavto-admin.tar.gz -C publish/admin .
+
+      - name: Upload archives
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PORT" "$HOST" >> ~/.ssh/known_hosts
+          scp -i ~/.ssh/deploy_key -P "$PORT" diavto-site.tar.gz diavto-admin.tar.gz deploy/scripts/preflight-db.sh "$USER@$HOST:/tmp/"
+
+      - name: Restart services
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PORT" "$HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" '
+            set -euo pipefail
+            install -m 755 /tmp/preflight-db.sh /opt/diavto/preflight-db.sh
+            bash /opt/diavto/preflight-db.sh /opt/diavto/Data/diavto.db
+            systemctl stop diavto-site diavto-admin
+            mkdir -p /opt/diavto/backups
+            if [ -f /opt/diavto/Data/diavto.db ]; then
+              cp /opt/diavto/Data/diavto.db "/opt/diavto/backups/diavto-before-update-$(date +%F_%H-%M).db"
+            fi
+            tar -xzf /tmp/diavto-site.tar.gz -C /opt/diavto/site
+            tar -xzf /tmp/diavto-admin.tar.gz -C /opt/diavto/admin
+            chown -R diavto:diavto /opt/diavto
+            chmod 755 /opt/diavto/site/DiAvto.Site /opt/diavto/admin/DiAvto.Admin
+            systemctl start diavto-admin diavto-site
+          '

@@ -1,0 +1,283 @@
+@page "/cars/{Id:int}"
+@attribute [Authorize]
+@using DiAvto.Admin.Features.Listings
+@inject ListingService ListingService
+@inject CurrencyService CurrencyService
+
+@if (_listing is null)
+{
+    <div class="container page-pad">
+        <EmptyState Title="Автомобиль не найден"
+                    Description="Возможно, объявление было удалено или изменился источник данных."
+                    Icon="🚗">
+            <a class="btn btn-primary" href="/#search">Вернуться к поиску</a>
+        </EmptyState>
+    </div>
+}
+else
+{
+    <PageTitle>@DisplayTitle — DiAvto</PageTitle>
+
+    <div class="container page-pad">
+        <div class="breadcrumbs">
+            <a href="/">Поиск</a>
+            <span>/</span>
+            <span>@DisplayTitle</span>
+        </div>
+
+        <div class="car-detail-head">
+            <div>
+                <div class="car-detail-tags">
+                    @if (!string.IsNullOrWhiteSpace(DisplayBrand))
+                    {
+                        <span class="detail-tag">@DisplayBrand</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(DisplaySeries))
+                    {
+                        <span class="detail-tag">@DisplaySeries</span>
+                    }
+                    @if (_listing.Year is not null)
+                    {
+                        <span class="detail-tag">@_listing.Year</span>
+                    }
+                    @if (_listing.IsNewEnergy)
+                    {
+                        <span class="detail-tag detail-tag-green">Электро/гибрид</span>
+                    }
+                </div>
+                <h1>@DisplayTitle</h1>
+                <p class="car-detail-sub">
+                    @DisplayFormat.Mileage(_listing.MileageKm)
+                    @if (!string.IsNullOrWhiteSpace(_listing.CityName))
+                    {
+                        <span>· @CarSpecTranslator.Translate(_listing.CityName)</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_listing.Displacement))
+                    {
+                        <span>· @_listing.Displacement</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_listing.Gearbox))
+                    {
+                        <span>· @CarSpecTranslator.Translate(_listing.Gearbox)</span>
+                    }
+                </p>
+            </div>
+
+            <div class="car-detail-price">
+                <span class="price-cny">@DisplayFormat.Cny(_listing.PriceCny)</span>
+                <strong class="price-rub">@DisplayFormat.Rub(_priceRub)</strong>
+                <span class="price-note">ориентир по курсу ЦБ @( _markup > 0 ? $" (+{DisplayFormat.Percent(_markup)})" : "" )</span>
+                <a class="btn btn-primary btn-block" href="@_sourceUrl" target="_blank" rel="noopener noreferrer">
+                    Открыть оригинал ↗
+                </a>
+                <AuthorizeView Policy="AdminPage.listings">
+                    <Authorized>
+                        <a class="btn btn-outline-secondary btn-block" href="/admin/listings/@Id/card">
+                            Карточка для клиента
+                        </a>
+                    </Authorized>
+                </AuthorizeView>
+            </div>
+        </div>
+
+        <div class="car-detail-layout">
+            <div class="car-detail-main">
+                <div class="car-gallery" data-gallery>
+                    <button type="button" class="gallery-main" data-gallery-open data-src="@_mainPhoto" aria-label="Открыть фото">
+                        <img id="mainCarImage" src="@_mainPhoto" alt="@DisplayTitle" referrerpolicy="no-referrer"
+                             onerror="this.onerror=null;this.src='/img/car-placeholder.svg';" />
+                        @if (_photos.Count > 1)
+                        {
+                            <span class="gallery-hint">Нажмите, чтобы увеличить · @_photos.Count фото</span>
+                        }
+                    </button>
+
+                    @if (_photos.Count > 1)
+                    {
+                        <div class="gallery-thumbs">
+                            @for (var i = 0; i < _photos.Count; i++)
+                            {
+                                var index = i;
+                                <button type="button" class="gallery-thumb @(index == 0 ? "active" : "")"
+                                        data-gallery-thumb data-index="@index" data-src="@_photos[index]"
+                                        aria-label="Фото @(index + 1)">
+                                    <img src="@_photos[index]" alt="Фото @(index + 1)" loading="lazy" referrerpolicy="no-referrer"
+                                         onerror="this.onerror=null;this.src='/img/car-placeholder.svg';" />
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <section class="detail-section">
+                    <h2>Характеристики</h2>
+                    <div class="spec-grid">
+                        @foreach (var spec in _specs)
+                        {
+                            <div class="spec-row">
+                                <span>@spec.Label</span>
+                                <strong>@spec.Value</strong>
+                            </div>
+                        }
+                    </div>
+                </section>
+
+                @if (!string.IsNullOrWhiteSpace(_listing.Description))
+                {
+                    <section class="detail-section">
+                        <h2>Комментарий продавца</h2>
+                        <p class="detail-description">@_listing.Description</p>
+                    </section>
+                }
+
+                @if (_photos.Count > 1)
+                {
+                    <section class="detail-section">
+                        <div class="detail-section-head">
+                            <h2>Все фотографии</h2>
+                            <span>@_photos.Count</span>
+                        </div>
+                        <div class="photo-grid">
+                            @for (var i = 0; i < _photos.Count; i++)
+                            {
+                                var index = i;
+                                <button type="button" class="photo-grid-item" data-gallery-open data-src="@_photos[index]"
+                                        aria-label="Открыть фото @(index + 1)">
+                                    <img src="@_photos[index]" alt="Фото @(index + 1)" loading="lazy" referrerpolicy="no-referrer"
+                                         onerror="this.onerror=null;this.src='/img/car-placeholder.svg';" />
+                                </button>
+                            }
+                        </div>
+                    </section>
+                }
+            </div>
+
+            <aside class="car-detail-aside">
+                <div class="aside-card">
+                    <span class="eyebrow">Объявление</span>
+                    <h3>Продавец</h3>
+                    <dl class="aside-list">
+                        <div><dt>Площадка</dt><dd>@_listing.SourceSite.Name</dd></div>
+                        @if (!string.IsNullOrWhiteSpace(_listing.DealerName))
+                        {
+                            <div><dt>Дилер</dt><dd>@_listing.DealerName</dd></div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_listing.DealerId))
+                        {
+                            <div><dt>ID дилера</dt><dd>@_listing.DealerId</dd></div>
+                        }
+                        <div><dt>Город</dt><dd>@(CarSpecTranslator.Translate(_listing.CityName) is { Length: > 0 } city ? city : "—")</dd></div>
+                        <div><dt>Обновлено</dt><dd>@DisplayFormat.Date(_listing.LastFetchedAt)</dd></div>
+                    </dl>
+
+                    <p class="aside-note">
+                        Мы показываем данные источника. Все фотографии и права на них принадлежат che168.com / Autohome.
+                    </p>
+
+                    <a class="btn btn-outline-secondary btn-block" href="@_listing.SourceSite.BaseUrl" target="_blank" rel="noopener noreferrer">
+                        Сайт источника ↗
+                    </a>
+                </div>
+
+                <div class="aside-card aside-price-card">
+                    <span>Цена в Китае</span>
+                    <strong>@DisplayFormat.Cny(_listing.PriceCny)</strong>
+                    <span>@DisplayFormat.Rub(_priceRub)</span>
+                    <small>Курс: 1 юань = @DisplayFormat.RubRate(_rate)</small>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <div class="lightbox" id="carLightbox" hidden>
+        <button type="button" class="lightbox-close" data-lightbox-close aria-label="Закрыть">×</button>
+        <button type="button" class="lightbox-nav lightbox-prev" data-lightbox-prev aria-label="Назад">‹</button>
+        <img id="lightboxImage" src="" alt="Фотография автомобиля" referrerpolicy="no-referrer" />
+        <button type="button" class="lightbox-nav lightbox-next" data-lightbox-next aria-label="Вперёд">›</button>
+        <span class="lightbox-counter" id="lightboxCounter"></span>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private CarListing? _listing;
+    private List<string> _photos = [];
+    private string _mainPhoto = "/img/car-placeholder.svg";
+    private decimal _priceRub;
+    private decimal _rate;
+    private decimal _markup;
+    private string _sourceUrl = "/";
+
+    private string DisplayTitle => _listing is null
+        ? "Автомобиль"
+        : CarSpecTranslator.BuildTitle(
+            _listing.BrandName,
+            _listing.SeriesName,
+            _listing.Year,
+            _listing.Displacement,
+            _listing.Gearbox,
+            _listing.Title);
+
+    private string DisplayBrand => _listing is null ? "" : CarSpecTranslator.TranslateBrand(_listing.BrandName);
+
+    private string DisplaySeries => _listing is null ? "" : CarSpecTranslator.TranslateSeries(_listing.SeriesName);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _listing = await ListingService.GetByIdAsync(Id);
+        if (_listing is null)
+        {
+            return;
+        }
+
+        _photos = _listing.Photos
+            .OrderBy(x => x.SortOrder)
+            .Select(x => x.Url)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (_photos.Count == 0)
+        {
+            var fallback = _listing.ImageUrl ?? "/img/car-placeholder.svg";
+            _photos.Add(fallback);
+        }
+
+        _mainPhoto = _photos[0];
+        _sourceUrl = string.IsNullOrWhiteSpace(_listing.PublicUrl)
+            ? _listing.SourceSite.BaseUrl
+            : _listing.PublicUrl;
+
+        var quote = await CurrencyService.GetCurrentAsync();
+        _rate = quote.Rate;
+        _markup = await CurrencyService.GetMarkupPercentAsync();
+        _priceRub = CurrencyService.CalculateRub(_listing.PriceCny, _rate, _markup);
+    }
+
+    private IEnumerable<(string Label, string Value)> _specs
+    {
+        get
+        {
+            if (_listing is null)
+            {
+                yield break;
+            }
+
+            yield return ("Год выпуска", _listing.Year?.ToString() ?? "—");
+            yield return ("Регистрация", _listing.FirstRegistration ?? "—");
+            yield return ("Пробег", DisplayFormat.Mileage(_listing.MileageKm));
+            yield return ("Двигатель", _listing.Displacement ?? "—");
+            yield return ("Коробка", CarSpecTranslator.Translate(_listing.Gearbox) is { Length: > 0 } gearbox ? gearbox : "—");
+            yield return ("Топливо", CarSpecTranslator.Translate(_listing.FuelType) is { Length: > 0 } fuel ? fuel : "—");
+            yield return ("Экокласс", CarSpecTranslator.Translate(_listing.EmissionStandard) is { Length: > 0 } emission ? emission : "—");
+            yield return ("Цвет", CarSpecTranslator.Translate(_listing.Color) is { Length: > 0 } color ? color : "—");
+            yield return ("Кузов", CarSpecTranslator.Translate(_listing.BodyType) is { Length: > 0 } body ? body : "—");
+            yield return ("Владельцев", _listing.TransferCount?.ToString() ?? "—");
+            yield return ("Город", CarSpecTranslator.Translate(_listing.CityName) is { Length: > 0 } city ? city : "—");
+            yield return ("Фотографий", _photos.Count.ToString());
+        }
+    }
+}
+

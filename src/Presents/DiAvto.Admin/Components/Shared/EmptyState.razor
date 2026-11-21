@@ -1,0 +1,35 @@
+<div class="empty-state">
+    <span class="empty-icon">@Icon</span>
+    <h3>@Title</h3>
+    @if (!string.IsNullOrWhiteSpace(Description))
+    {
+        <p>@Description</p>
+    }
+    @if (ChildContent is not null || Actions is not null)
+    {
+        <div class="empty-actions">
+            @ChildContent
+            @Actions
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Description { get; set; }
+
+    [Parameter]
+    public string Icon { get; set; } = "🔎";
+
+    /// <summary>Основное содержимое: кнопки/ссылки под сообщением.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Альтернативный именованный слот для кнопок.</summary>
+    [Parameter]
+    public RenderFragment? Actions { get; set; }
+}
+

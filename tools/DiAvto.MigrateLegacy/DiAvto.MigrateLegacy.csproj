@@ -1,0 +1,10 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>DiAvto.MigrateLegacy</RootNamespace>
+    <AssemblyName>DiAvto.MigrateLegacy</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Infrastructure\DiAvto.Infrastructure\DiAvto.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

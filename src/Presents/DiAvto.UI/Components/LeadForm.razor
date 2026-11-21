@@ -1,0 +1,83 @@
+@using System.ComponentModel.DataAnnotations
+@inject ILeadService LeadService
+
+@if (_sent)
+{
+    <div class="form-success">
+        <strong>Заявка отправлена.</strong>
+        <span>Свяжемся с вами в ближайшее время.</span>
+    </div>
+}
+else
+{
+    <EditForm Model="_model" OnValidSubmit="SubmitAsync" class="lead-form">
+        <DataAnnotationsValidator />
+        <div class="form-row">
+            <label>Имя</label>
+            <InputText @bind-Value="_model.Name" class="input" placeholder="Как к вам обращаться" />
+            <ValidationMessage For="() => _model.Name" />
+        </div>
+        <div class="form-row">
+            <label>Телефон</label>
+            <InputText @bind-Value="_model.Phone" class="input" placeholder="+7 (___) ___-__-__" />
+            <ValidationMessage For="() => _model.Phone" />
+        </div>
+        <div class="form-row">
+            <label>Комментарий</label>
+            <InputTextArea @bind-Value="_model.Message" class="input textarea" placeholder="Марка, бюджет или вопрос" />
+        </div>
+        <label class="consent">
+            <InputCheckbox @bind-Value="_model.Consent" />
+            <span>Согласен на обработку персональных данных и принимаю <a href="/privacy-policy" target="_blank">политику конфиденциальности</a></span>
+        </label>
+        <ValidationMessage For="() => _model.Consent" />
+        <button type="submit" class="btn btn-primary btn-block" disabled="@_busy">@ButtonText</button>
+        @if (_error is not null)
+        {
+            <div class="form-error">@_error</div>
+        }
+    </EditForm>
+}
+
+@code {
+    [Parameter] public string Source { get; set; } = "site";
+    [Parameter] public string ButtonText { get; set; } = "Отправить заявку";
+
+    private readonly LeadFormModel _model = new();
+    private bool _busy;
+    private bool _sent;
+    private string? _error;
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await LeadService.SubmitAsync(new LeadRequest(_model.Name, _model.Phone, _model.Message, Source));
+            _sent = true;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private sealed class LeadFormModel
+    {
+        [Required(ErrorMessage = "Укажите имя")]
+        public string Name { get; set; } = "";
+
+        [Required(ErrorMessage = "Укажите телефон")]
+        public string Phone { get; set; } = "";
+
+        public string? Message { get; set; }
+
+        [Range(typeof(bool), "true", "true", ErrorMessage = "Нужно согласие на обработку данных")]
+        public bool Consent { get; set; }
+    }
+}

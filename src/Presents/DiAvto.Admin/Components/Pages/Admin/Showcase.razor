@@ -1,0 +1,400 @@
+@page "/admin/showcase"
+@attribute [Authorize(Policy = "AdminPage.showcase")]
+@rendermode InteractiveServer
+@inject DiAvtoDbContext Db
+@inject AuditService Audit
+@inject IJSRuntime JS
+
+<PageTitle>Витрина — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Публичный сайт" Title="Витрина автомобилей"
+            Description="Автомобили, которые показываются в каталоге на di-auto.ru.">
+    <Actions>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/cards">Карточки клиента</a>
+        <button class="btn btn-primary btn-sm" @onclick="StartCreate">Добавить автомобиль</button>
+    </Actions>
+</PageHeader>
+
+@if (_message is not null)
+{
+    <div class="alert alert-success" role="alert">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <span class="eyebrow">Каталог</span>
+            <h2>Автомобили на сайте</h2>
+        </div>
+        <span class="badge-soft">@_cars.Count из @_total</span>
+    </div>
+
+    <div class="toolbar">
+        <input class="form-control" placeholder="Поиск по названию, марке, стране"
+               @bind="_search" @bind:event="oninput" />
+        <button class="btn btn-primary btn-sm" @onclick="LoadAsync" disabled="@_loading">Найти</button>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-block compact"><span class="spinner"></span><p>Загружаем витрину…</p></div>
+    }
+    else if (_cars.Count == 0)
+    {
+        <EmptyState Title="Автомобилей нет" Description="Измените поиск или добавьте автомобиль." Icon="🚗" />
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table data-table-wide">
+                <thead>
+                    <tr>
+                        <th>Автомобиль</th>
+                        <th>Цена</th>
+                        <th>Страна</th>
+                        <th>Наличие</th>
+                        <th>Публикация</th>
+                        <th>Порядок</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var car in _cars)
+                    {
+                        <tr>
+                            <td>
+                                <div class="listing-cell">
+                                    <img src="@MainPhoto(car)" alt="" loading="lazy" />
+                                    <div>
+                                        <span class="table-title">@car.Name</span>
+                                        <small class="muted">@car.Make · @car.Year · @car.Photos.Count фото</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td><strong>@DisplayFormat.RubExact(car.PriceRub)</strong></td>
+                            <td>@car.Country</td>
+                            <td>
+                                <span class="status-badge @(car.InStock ? "status-completed" : "status-failed")">
+                                    <span class="status-dot"></span>@(car.InStock ? "в наличии" : "под заказ")
+                                </span>
+                            </td>
+                            <td>
+                                <button type="button" class="status-badge @(car.IsPublished ? "status-completed" : "status-failed")"
+                                        @onclick="() => TogglePublishedAsync(car)">
+                                    <span class="status-dot"></span>@(car.IsPublished ? "опубликован" : "скрыт")
+                                </button>
+                            </td>
+                            <td>@car.SortOrder</td>
+                            <td class="table-actions">
+                                <button type="button" @onclick="() => StartEditAsync(car.Id)">Изменить</button>
+                                <button type="button" class="danger" @onclick="() => DeleteAsync(car)">Удалить</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@if (_edit is not null)
+{
+    <section class="panel">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">Редактирование</span>
+                <h2>@(_edit.Id == 0 ? "Новый автомобиль" : _edit.Name)</h2>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">Закрыть</button>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-field span-2">
+                <label>Название</label>
+                <input class="form-control" @bind="_edit.Name" />
+            </div>
+            <div class="form-field">
+                <label>Марка</label>
+                <input class="form-control" @bind="_edit.Make" />
+            </div>
+            <div class="form-field">
+                <label>Год</label>
+                <input class="form-control" type="number" @bind="_edit.Year" />
+            </div>
+            <div class="form-field">
+                <label>Цена, ₽</label>
+                <input class="form-control" type="number" step="1000" @bind="_edit.PriceRub" />
+            </div>
+            <div class="form-field">
+                <label>Страна</label>
+                <input class="form-control" @bind="_edit.Country" />
+            </div>
+            <div class="form-field">
+                <label>Кузов</label>
+                <input class="form-control" @bind="_edit.BodyType" />
+            </div>
+            <div class="form-field">
+                <label>Двигатель</label>
+                <input class="form-control" @bind="_edit.Engine" />
+            </div>
+            <div class="form-field">
+                <label>Коробка</label>
+                <input class="form-control" @bind="_edit.Transmission" />
+            </div>
+            <div class="form-field">
+                <label>Привод</label>
+                <input class="form-control" @bind="_edit.Drive" />
+            </div>
+            <div class="form-field">
+                <label>Топливо</label>
+                <input class="form-control" @bind="_edit.Fuel" />
+            </div>
+            <div class="form-field">
+                <label>Пробег, км</label>
+                <input class="form-control" type="number" @bind="_edit.MileageKm" />
+            </div>
+            <div class="form-field">
+                <label>Порядок сортировки</label>
+                <input class="form-control" type="number" @bind="_edit.SortOrder" />
+            </div>
+            <div class="form-field span-2">
+                <label>Описание</label>
+                <textarea class="form-control" rows="4" @bind="_edit.Description"></textarea>
+            </div>
+            <div class="form-field span-2">
+                <label>Фотографии (по одной ссылке в строке)</label>
+                <textarea class="form-control mono" rows="6" @bind="_photoText"
+                          placeholder="/images/cars/...jpg"></textarea>
+                <small class="field-help">Первая ссылка используется как главное фото карточки.</small>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <label class="checkbox-row"><input type="checkbox" @bind="_edit.InStock" /> В наличии</label>
+            <label class="checkbox-row"><input type="checkbox" @bind="_edit.IsPublished" /> Опубликован</label>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                @if (_saving)
+                {
+                    <span class="spinner"></span>
+                }
+                Сохранить
+            </button>
+            <button class="btn btn-outline-secondary" @onclick="CancelEdit">Отмена</button>
+        </div>
+    </section>
+}
+
+@code {
+    private const int PageSize = 100;
+
+    private List<ShowcaseCar> _cars = [];
+    private ShowcaseCar? _edit;
+    private bool _isNew;
+    private string _photoText = "";
+    private string _search = "";
+    private string? _message;
+    private string? _error;
+    private bool _loading = true;
+    private bool _saving;
+    private int _total;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            var query = Db.ShowcaseCars
+                .AsNoTracking()
+                .Include(x => x.Photos)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var term = _search.Trim();
+                query = query.Where(x =>
+                    x.Name.Contains(term) ||
+                    x.Make.Contains(term) ||
+                    x.Country.Contains(term));
+            }
+
+            _total = await query.CountAsync();
+            _cars = await query
+                .OrderBy(x => x.SortOrder)
+                .ThenBy(x => x.Id)
+                .Take(PageSize)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task StartEditAsync(int id)
+    {
+        _message = null;
+        _error = null;
+        _isNew = false;
+        _edit = await Db.ShowcaseCars
+            .Include(x => x.Photos)
+            .FirstAsync(x => x.Id == id);
+
+        _photoText = string.Join(Environment.NewLine,
+            _edit.Photos.OrderBy(x => x.SortOrder).Select(x => x.Url));
+    }
+
+    private void StartCreate()
+    {
+        _message = null;
+        _error = null;
+        _isNew = true;
+        _edit = new ShowcaseCar
+        {
+            Year = DateTime.Now.Year,
+            Country = "Китай",
+            InStock = true,
+            IsPublished = true,
+            SortOrder = (_cars.Count == 0 ? 0 : _cars.Max(x => x.SortOrder)) + 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _photoText = "";
+    }
+
+    private void CancelEdit()
+    {
+        _edit = null;
+        _isNew = false;
+        _photoText = "";
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_edit is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_edit.Name))
+            {
+                _error = "Укажите название автомобиля.";
+                return;
+            }
+
+            _edit.UpdatedAt = DateTime.UtcNow;
+
+            var urls = _photoText
+                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            if (_isNew)
+            {
+                Db.ShowcaseCars.Add(_edit);
+            }
+            else
+            {
+                Db.ShowcaseCarPhotos.RemoveRange(_edit.Photos);
+                _edit.Photos.Clear();
+            }
+
+            for (var i = 0; i < urls.Count; i++)
+            {
+                _edit.Photos.Add(new ShowcaseCarPhoto { Url = urls[i], SortOrder = i });
+            }
+
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("showcase.update", $"Автомобиль витрины «{_edit.Name}» сохранён.");
+            _message = "Автомобиль сохранён.";
+            _isNew = false;
+            CancelEdit();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task TogglePublishedAsync(ShowcaseCar car)
+    {
+        _message = null;
+        _error = null;
+
+        try
+        {
+            var entity = await Db.ShowcaseCars.FirstAsync(x => x.Id == car.Id);
+            entity.IsPublished = !entity.IsPublished;
+            entity.UpdatedAt = DateTime.UtcNow;
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("showcase.publish",
+                $"Автомобиль «{entity.Name}»: {(entity.IsPublished ? "опубликован" : "скрыт")}.");
+            _message = entity.IsPublished ? "Автомобиль опубликован." : "Автомобиль скрыт с сайта.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task DeleteAsync(ShowcaseCar car)
+    {
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Удалить автомобиль «{car.Name}»? Действие необратимо.");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            var entity = await Db.ShowcaseCars.FirstAsync(x => x.Id == car.Id);
+            Db.ShowcaseCars.Remove(entity);
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("showcase.delete", $"Автомобиль витрины «{car.Name}» удалён.");
+            _message = "Автомобиль удалён.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static string MainPhoto(ShowcaseCar car)
+    {
+        return car.Photos
+                   .OrderBy(x => x.SortOrder)
+                   .Select(x => x.Url)
+                   .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+               ?? "/images/car-placeholder.svg";
+    }
+}

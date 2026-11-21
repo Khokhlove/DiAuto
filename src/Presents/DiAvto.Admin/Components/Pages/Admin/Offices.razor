@@ -1,0 +1,263 @@
+@page "/admin/offices"
+@attribute [Authorize(Policy = "AdminPage.offices")]
+@rendermode InteractiveServer
+@inject DiAvtoDbContext Db
+@inject AuditService Audit
+@inject IJSRuntime JS
+
+<PageTitle>Офисы — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Публичный сайт" Title="Офисы"
+            Description="Адреса, телефоны и точки на карте на странице «Контакты».">
+    <Actions>
+        <button class="btn btn-primary btn-sm" @onclick="StartCreate">Добавить офис</button>
+    </Actions>
+</PageHeader>
+
+@if (_message is not null)
+{
+    <div class="alert alert-success" role="alert">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <span class="eyebrow">Контакты</span>
+            <h2>Офисы компании</h2>
+        </div>
+        <span class="badge-soft">@_offices.Count</span>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-block compact"><span class="spinner"></span><p>Загружаем офисы…</p></div>
+    }
+    else if (_offices.Count == 0)
+    {
+        <EmptyState Title="Офисов нет" Description="Добавьте первый офис." Icon="📍" />
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table data-table-wide">
+                <thead>
+                    <tr>
+                        <th>Город</th>
+                        <th>Адрес</th>
+                        <th>Телефон</th>
+                        <th>Координаты</th>
+                        <th>Статус</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var office in _offices)
+                    {
+                        <tr>
+                            <td><strong>@office.City</strong></td>
+                            <td>@office.Address</td>
+                            <td>@office.Phone</td>
+                            <td class="mono muted">
+                                @(office.Latitude is null || office.Longitude is null
+                                    ? "—"
+                                    : $"{office.Latitude:0.0000}, {office.Longitude:0.0000}")
+                            </td>
+                            <td>
+                                <button type="button" class="status-badge @(office.IsActive ? "status-completed" : "status-failed")"
+                                        @onclick="() => ToggleAsync(office)">
+                                    <span class="status-dot"></span>@(office.IsActive ? "активен" : "скрыт")
+                                </button>
+                            </td>
+                            <td class="table-actions">
+                                <button type="button" @onclick="() => StartEdit(office)">Изменить</button>
+                                <button type="button" class="danger" @onclick="() => DeleteAsync(office)">Удалить</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@if (_edit is not null)
+{
+    <section class="panel">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">Редактирование</span>
+                <h2>@(_edit.Id == 0 ? "Новый офис" : _edit.City)</h2>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">Закрыть</button>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-field">
+                <label>Город</label>
+                <input class="form-control" @bind="_edit.City" />
+            </div>
+            <div class="form-field">
+                <label>Порядок сортировки</label>
+                <input class="form-control" type="number" @bind="_edit.SortOrder" />
+            </div>
+            <div class="form-field span-2">
+                <label>Адрес</label>
+                <input class="form-control" @bind="_edit.Address" />
+            </div>
+            <div class="form-field">
+                <label>Телефон</label>
+                <input class="form-control" @bind="_edit.Phone" />
+            </div>
+            <div class="form-field">
+                <label>Второй телефон</label>
+                <input class="form-control" @bind="_edit.Phone2" />
+            </div>
+            <div class="form-field">
+                <label>Широта</label>
+                <input class="form-control" type="number" step="0.000001" @bind="_edit.Latitude" />
+            </div>
+            <div class="form-field">
+                <label>Долгота</label>
+                <input class="form-control" type="number" step="0.000001" @bind="_edit.Longitude" />
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <label class="checkbox-row"><input type="checkbox" @bind="_edit.IsActive" /> Показывать на сайте</label>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">Сохранить</button>
+            <button class="btn btn-outline-secondary" @onclick="CancelEdit">Отмена</button>
+        </div>
+    </section>
+}
+
+@code {
+    private List<Office> _offices = [];
+    private Office? _edit;
+    private string? _message;
+    private string? _error;
+    private bool _loading = true;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _offices = await Db.Offices
+            .AsNoTracking()
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.City)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void StartCreate()
+    {
+        _message = null;
+        _error = null;
+        _edit = new Office
+        {
+            IsActive = true,
+            SortOrder = (_offices.Count == 0 ? 0 : _offices.Max(x => x.SortOrder)) + 1
+        };
+    }
+
+    private void StartEdit(Office office)
+    {
+        _message = null;
+        _error = null;
+        _edit = office;
+    }
+
+    private void CancelEdit() => _edit = null;
+
+    private async Task SaveAsync()
+    {
+        if (_edit is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_edit.City))
+            {
+                _error = "Укажите город.";
+                return;
+            }
+
+            if (_edit.Id == 0)
+            {
+                Db.Offices.Add(_edit);
+            }
+            else
+            {
+                Db.Offices.Update(_edit);
+            }
+
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("office.save", $"Офис «{_edit.City}» сохранён.");
+            _message = "Офис сохранён.";
+            _edit = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ToggleAsync(Office office)
+    {
+        try
+        {
+            var entity = await Db.Offices.FirstAsync(x => x.Id == office.Id);
+            entity.IsActive = !entity.IsActive;
+            await Db.SaveChangesAsync();
+            _message = entity.IsActive ? "Офис показан на сайте." : "Офис скрыт.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task DeleteAsync(Office office)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"Удалить офис «{office.City}»?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            var entity = await Db.Offices.FirstAsync(x => x.Id == office.Id);
+            Db.Offices.Remove(entity);
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("office.delete", $"Офис «{office.City}» удалён.");
+            _message = "Офис удалён.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

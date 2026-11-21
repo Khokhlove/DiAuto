@@ -1,0 +1,188 @@
+@inject ServiceTariffService TariffService
+@inject CurrencyService CurrencyService
+
+<section class="budget-panel">
+    <div class="budget-panel-head">
+        <h3>Сначала расходы, потом автомобиль</h3>
+        @if (State.Loading)
+        {
+            <span class="spinner"></span>
+        }
+    </div>
+
+    @if (State.Error is not null)
+    {
+        <div class="alert alert-warning" role="alert">@State.Error</div>
+    }
+
+    @if (!State.Loading)
+    {
+        <div class="budget-fields">
+            <div class="form-field">
+                <label>Валюта бюджета</label>
+                <div class="segmented" role="group" aria-label="Валюта бюджета">
+                    <button type="button" class="@(State.Currency == PriceCurrency.Cny ? "active" : "")"
+                            @onclick="() => SetCurrency(PriceCurrency.Cny)">Юани</button>
+                    <button type="button" class="@(State.Currency == PriceCurrency.Rub ? "active" : "")"
+                            @onclick="() => SetCurrency(PriceCurrency.Rub)">Рубли</button>
+                </div>
+            </div>
+
+            <div class="form-field">
+                <label for="budgetFrom">Бюджет от, в @CurrencyWord</label>
+                <input id="budgetFrom" type="number" class="form-control" min="0" step="1"
+                       placeholder="50000" @bind="State.PriceFrom" />
+            </div>
+
+            <div class="form-field">
+                <label for="budgetTo">Бюджет до, в @CurrencyWord</label>
+                <input id="budgetTo" type="number" class="form-control" min="0" step="1"
+                       placeholder="300000" @bind="State.PriceTo" />
+            </div>
+        </div>
+
+        <div class="budget-section-title">Автомобиль и логистика</div>
+
+        <div class="budget-car-grid">
+            <div class="form-field">
+                <label for="engineCc">Объём, см³</label>
+                <input id="engineCc" type="number" class="form-control" min="1" step="1"
+                       @bind="State.EngineCc" />
+            </div>
+
+            <div class="form-field">
+                <label for="powerHp">Мощность, л.с.</label>
+                <input id="powerHp" type="number" class="form-control" min="1" step="1"
+                       @bind="State.PowerHp" />
+            </div>
+
+            <div class="form-field">
+                <label for="vehicleYear">Год выпуска</label>
+                <input id="vehicleYear" type="number" class="form-control" min="1990" max="@DateTime.Now.Year"
+                       @bind="State.VehicleYear" />
+            </div>
+
+            <div class="form-field">
+                <label for="fuelKind">Тип двигателя</label>
+                <select id="fuelKind" class="form-select" @bind="State.FuelKind">
+                    <option value="petrol">Бензиновый</option>
+                    <option value="diesel">Дизельный</option>
+                    <option value="petrol-hybrid">Бензиновый + электро</option>
+                    <option value="diesel-hybrid">Дизельный + электро</option>
+                    <option value="electric">Электрический</option>
+                </select>
+            </div>
+
+            <div class="form-field">
+                <label for="importer">Ввозит</label>
+                <select id="importer" class="form-select" @bind="State.IsLegalEntity">
+                    <option value="false">Физическое лицо (ЕТС)</option>
+                    <option value="true">Юридическое лицо (СТП)</option>
+                </select>
+            </div>
+
+            <div class="form-field">
+                <label for="deliveryAmount">Доставка до Владивостока</label>
+                <input id="deliveryAmount" type="number" class="form-control" min="0" step="1"
+                       @bind="State.DeliveryToVladivostokAmount" />
+            </div>
+
+            <div class="form-field">
+                <label for="deliveryCurrency">Валюта доставки</label>
+                <select id="deliveryCurrency" class="form-select" @bind="State.DeliveryToVladivostokCurrency">
+                    <option value="CNY">Юань</option>
+                    <option value="JPY">Иена</option>
+                    <option value="KRW">Вона</option>
+                </select>
+            </div>
+        </div>
+
+        @if (!State.IsLegalEntity)
+        {
+            <label class="checkbox-row budget-checkbox">
+                <input type="checkbox" @bind="State.UseResaleUtilization" />
+                <span>Утильсбор для перепродажи</span>
+            </label>
+        }
+
+        <label class="checkbox-row budget-checkbox">
+            <input type="checkbox" @bind="State.IncludeDeliveryToCity" />
+            <span>Доставка до города клиента</span>
+        </label>
+
+        @if (State.IncludeDeliveryToCity)
+        {
+            <div class="form-field budget-city-field">
+                <label for="deliveryCity">Город клиента</label>
+                <select id="deliveryCity" class="form-select" @bind="State.DeliveryFromVladivostokTariffId">
+                    @CityOptions()
+                </select>
+            </div>
+        }
+
+        <BudgetBreakdownCard Plan="Plan" Title="Структура расходов" />
+    }
+</section>
+
+@code {
+    [Parameter]
+    public SearchBudgetState State { get; set; } = new();
+
+    private SearchBudgetPlan? Plan => State.BuildPlan();
+
+    private string CurrencyWord => State.Currency == PriceCurrency.Rub ? "рублях" : "юанях";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (State.ActiveTariffs.Count > 0 && !State.Loading)
+        {
+            return;
+        }
+
+        State.Loading = true;
+        State.Error = null;
+        StateHasChanged();
+
+        try
+        {
+            State.ActiveTariffs = await TariffService.GetActiveAsync();
+            State.ApplyDefaultTariffs();
+
+            var rates = await CurrencyService.GetRatesAsync(["CNY", "EUR", "JPY", "KRW"]);
+            State.Rates = new ImportCurrencyRates
+            {
+                CnyRub = rates["CNY"].Rate,
+                EurRub = rates["EUR"].Rate,
+                JpyRub = rates["JPY"].Rate,
+                KrwRub = rates["KRW"].Rate
+            };
+        }
+        catch (Exception ex)
+        {
+            State.Error = $"Не удалось загрузить тарифы и курсы: {ex.Message}";
+        }
+        finally
+        {
+            State.Loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SetCurrency(PriceCurrency currency)
+    {
+        State.Currency = currency;
+        StateHasChanged();
+    }
+
+    private RenderFragment CityOptions() => @<text>
+        @if (State.ForKind(ServiceTariffKind.DeliveryFromVladivostok).Count == 0)
+        {
+            <option value="0">Нет тарифов доставки</option>
+        }
+        @foreach (var tariff in State.ForKind(ServiceTariffKind.DeliveryFromVladivostok))
+        {
+            <option value="@tariff.Id">@tariff.Title — @DisplayFormat.RubExact(tariff.AmountRub)</option>
+        }
+    </text>;
+}
+

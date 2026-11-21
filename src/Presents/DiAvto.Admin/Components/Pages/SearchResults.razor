@@ -1,0 +1,241 @@
+@page "/search/{PublicId}"
+@attribute [Authorize]
+@inject SearchExecutionService SearchExecutionService
+@inject AppSettingsService AppSettings
+
+<PageTitle>Результаты поиска — DiAvto</PageTitle>
+
+@if (_loading)
+{
+    <div class="container page-pad">
+        <div class="loading-block">
+            <span class="spinner spinner-lg"></span>
+            <p>Загружаем результаты поиска…</p>
+        </div>
+    </div>
+}
+else if (_request is null)
+{
+    <div class="container page-pad">
+        <EmptyState Title="Поиск не найден"
+                    Description="Возможно, ссылка устарела. Вернитесь на главную и запустите новый поиск."
+                    Icon="🧭">
+            <a class="btn btn-primary" href="/#search">Новый поиск</a>
+        </EmptyState>
+    </div>
+}
+else
+{
+    var cheapest = _request.Items.Where(x => x.Tier == ResultTier.Cheapest).OrderBy(x => x.Rank).ToList();
+    var expensive = _request.Items.Where(x => x.Tier == ResultTier.MostExpensive).OrderBy(x => x.Rank).ToList();
+    var min = _request.Items.Select(x => x.PriceCny).DefaultIfEmpty(0).Min();
+    var max = _request.Items.Select(x => x.PriceCny).DefaultIfEmpty(0).Max();
+    var spread = max - min;
+
+    <section class="results-hero">
+        <div class="container">
+            <div class="breadcrumbs">
+                <a href="/">Поиск</a>
+                <span>/</span>
+                <span>Результаты</span>
+            </div>
+
+            <div class="results-head">
+                <div>
+                    <span class="eyebrow">Результаты поиска</span>
+                    <h1>@_request.BrandName@(string.IsNullOrWhiteSpace(_request.SeriesName) ? "" : $" · {CarSpecTranslator.TranslateSeries(_request.SeriesName)}")</h1>
+                    <p>
+                        @if (_request.YearFrom is not null || _request.YearTo is not null)
+                        {
+                            <span>Годы: @(_request.YearFrom?.ToString() ?? "…")–@(_request.YearTo?.ToString() ?? "…")</span>
+                        }
+                        @if (_request.MileageMaxKm is not null)
+                        {
+                            <span>Пробег до @DisplayFormat.Mileage(_request.MileageMaxKm)</span>
+                        }
+                        @if (_criteria?.BudgetPlan is { HasBudget: true } plan)
+                        {
+                            <span>Бюджет: @BudgetText(plan)</span>
+                            <span>На авто: @DisplayFormat.PriceRange(plan.CarBudgetFromCny, plan.CarBudgetToCny)</span>
+                        }
+                        else if (_request.PriceFromCny is not null || _request.PriceToCny is not null)
+                        {
+                            <span>@DisplayFormat.PriceRange(_request.PriceFromCny, _request.PriceToCny)</span>
+                        }
+                        <span>@DisplayFormat.Date(_request.CreatedAt)</span>
+                    </p>
+                </div>
+
+                <div class="results-actions">
+                    <a class="btn btn-outline-secondary" href="/#search">Новый поиск</a>
+                    <AuthorizeView Roles="Admin">
+                        <Authorized>
+                            <a class="btn btn-dark-outline" href="/admin/searches/@_request.Id">В админке</a>
+                        </Authorized>
+                    </AuthorizeView>
+                </div>
+            </div>
+
+            <div class="results-summary-grid">
+                <div class="summary-item">
+                    <span>Найдено</span>
+                    <strong>@_request.ResultCount</strong>
+                    <small>предложений в подборке</small>
+                </div>
+                <div class="summary-item">
+                    <span>Разброс цен</span>
+                    <strong>@DisplayFormat.Cny(spread)</strong>
+                    <small>между крайними предложениями</small>
+                </div>
+                <div class="summary-item">
+                    <span>Курс на момент поиска</span>
+                    <strong>1 юань = @DisplayFormat.RubRate(_request.ExchangeRate)</strong>
+                    <small>ЦБ РФ · наценка @DisplayFormat.Percent(_request.MarkupPercent)</small>
+                </div>
+                <div class="summary-item">
+                    <span>Источник</span>
+                    <strong>@_request.SourceSite.Name</strong>
+                    <small><a href="@_request.SourceSite.BaseUrl" target="_blank" rel="noopener noreferrer">перейти на сайт ↗</a></small>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    @if (_criteria?.BudgetPlan is { HasBudget: true } budgetPlan)
+    {
+        <div class="container page-pad results-budget">
+            <BudgetBreakdownCard Plan="budgetPlan" Title="Структура расходов" />
+        </div>
+    }
+
+    <div class="container page-pad results-content">
+        @if (_request.Status == SearchStatus.Failed)
+        {
+            <div class="alert alert-danger">
+                <strong>Поиск завершился ошибкой.</strong>
+                <span>@_request.ErrorMessage</span>
+                <a href="/#search">Попробовать снова</a>
+            </div>
+        }
+        else if (_request.Items.Count == 0)
+        {
+            <EmptyState Title="Ничего не нашлось"
+                        Description="Попробуйте расширить диапазон годов, увеличить максимальный пробег или убрать фильтр по цене."
+                        Icon="🫥">
+                <a class="btn btn-primary" href="/#search">Изменить параметры</a>
+            </EmptyState>
+        }
+        else
+        {
+            <section class="result-section">
+                <div class="result-section-head">
+                    <div>
+                        <span class="tier-marker tier-marker-cheap"></span>
+                        <h2>Самые дешёвые</h2>
+                        <span class="section-count">@cheapest.Count предложения</span>
+                    </div>
+                    <span class="tier-note">Нижняя граница рынка — требует внимательной проверки</span>
+                </div>
+
+                <div class="car-grid">
+                    @foreach (var item in cheapest)
+                    {
+                        <CarCard Listing="item.CarListing" Tier="item.Tier" Rank="item.Rank"
+                                 PriceCny="item.PriceCny" PriceRub="item.PriceRub" ShowSource="_showAttribution" />
+                    }
+                </div>
+            </section>
+
+            <section class="result-section">
+                <div class="result-section-head">
+                    <div>
+                        <span class="tier-marker tier-marker-expensive"></span>
+                        <h2>Самые дорогие</h2>
+                        <span class="section-count">@expensive.Count предложения</span>
+                    </div>
+                    <span class="tier-note">Верхняя граница рынка — обычно максимальная комплектация</span>
+                </div>
+
+                <div class="car-grid">
+                    @foreach (var item in expensive)
+                    {
+                        <CarCard Listing="item.CarListing" Tier="item.Tier" Rank="item.Rank"
+                                 PriceCny="item.PriceCny" PriceRub="item.PriceRub" ShowSource="_showAttribution" />
+                    }
+                </div>
+            </section>
+
+            <div class="attribution-box">
+                <div class="attribution-main">
+                    @if (!string.IsNullOrWhiteSpace(_request.SourceSite.LogoUrl))
+                    {
+                        <img class="source-logo" src="@_request.SourceSite.LogoUrl" alt="@_request.SourceSite.Name" referrerpolicy="no-referrer" />
+                    }
+                    <div>
+                        <strong>Источник данных и фотографий</strong>
+                        <p>@_request.SourceSite.AttributionText</p>
+                    </div>
+                </div>
+                <a class="btn btn-sm btn-outline-secondary" href="@_request.SourceSite.BaseUrl" target="_blank" rel="noopener noreferrer">
+                    Открыть che168.com ↗
+                </a>
+            </div>
+
+            <div class="legal-note">
+                <strong>Важно:</strong> рублёвая цена рассчитана по курсу ЦБ на момент поиска.
+                Если бюджет задавался в рублях, из него уже вычтены доставка, осмотр и растаможка —
+                в подборке показаны автомобили в пределах остатка.
+                Актуальную цену и наличие уточняйте в оригинальном объявлении.
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string PublicId { get; set; } = string.Empty;
+
+    private SearchRequest? _request;
+    private SearchCriteria? _criteria;
+    private bool _loading = true;
+    private bool _showAttribution = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _request = await SearchExecutionService.GetByPublicIdAsync(PublicId);
+        _criteria = SearchCriteriaSerializer.TryDeserialize(_request?.CriteriaJson);
+        _showAttribution = await AppSettings.GetBoolAsync("ShowSourceAttribution", true);
+        _loading = false;
+    }
+
+    private static string BudgetText(SearchBudgetPlan plan)
+    {
+        if (plan.BudgetFromRub is not null || plan.BudgetToRub is not null)
+        {
+            return FormatBudgetRange(plan.BudgetFromRub, plan.BudgetToRub, PriceCurrency.Rub);
+        }
+
+        return FormatBudgetRange(plan.BudgetFromCny, plan.BudgetToCny, PriceCurrency.Cny);
+    }
+
+    private static string FormatBudgetRange(decimal? from, decimal? to, PriceCurrency currency)
+    {
+        string Money(decimal value) => currency == PriceCurrency.Rub
+            ? DisplayFormat.RubExact(value)
+            : DisplayFormat.Cny(value);
+
+        if (from is not null && to is not null)
+        {
+            return $"{Money(from.Value)} – {Money(to.Value)}";
+        }
+
+        if (from is not null)
+        {
+            return $"от {Money(from.Value)}";
+        }
+
+        return to is not null ? $"до {Money(to.Value)}" : "—";
+    }
+}
+

@@ -1,0 +1,97 @@
+@page "/reviews"
+@inject IReviewService ReviewService
+
+<PageTitle>Отзывы — ДИ.авто</PageTitle>
+
+<section class="page-head">
+    <div class="container">
+        <span class="eyebrow">Отзывы</span>
+        <h1>Что говорят клиенты</h1>
+        <p>Реальные истории клиентов, которые уже получили автомобиль.</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="review-tabs">
+            <button class="tab @(_tab == "text" ? "active" : "")" @onclick='() => _tab = "text"'>Текстовые</button>
+            <button class="tab @(_tab == "screenshot" ? "active" : "")" @onclick='() => _tab = "screenshot"'>Скриншоты</button>
+            <button class="tab @(_tab == "video" ? "active" : "")" @onclick='() => _tab = "video"'>Видео</button>
+        </div>
+
+        @if (_tab == "text")
+        {
+            <div class="review-grid">
+                @foreach (var review in _text)
+                {
+                    <article class="review-card">
+                        <div class="review-stars">@Stars(review.Rating)</div>
+                        <p>@review.Text</p>
+                        <strong>@review.AuthorName</strong>
+                        <span>@review.City @(string.IsNullOrWhiteSpace(review.Source) ? "" : $"· {review.Source}")</span>
+                    </article>
+                }
+            </div>
+        }
+        else if (_tab == "screenshot")
+        {
+            <div class="review-screens">
+                @foreach (var review in _screenshots)
+                {
+                    <figure>
+                        <img src="@review.ScreenshotUrl" alt="Отзыв @review.AuthorName" loading="lazy" />
+                        <figcaption>@review.AuthorName @review.City</figcaption>
+                    </figure>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="review-grid">
+                @foreach (var review in _videos)
+                {
+                    <article class="review-card">
+                        <h3>@review.VideoTitle</h3>
+                        @if (!string.IsNullOrWhiteSpace(review.VideoUrl))
+                        {
+                            <a class="btn btn-outline" href="@review.VideoUrl" target="_blank" rel="noopener">Смотреть видео</a>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </div>
+</section>
+
+<section class="section section-soft">
+    <div class="container lead-block">
+        <div>
+            <span class="eyebrow">Оставить отзыв</span>
+            <h2>Расскажите о своём опыте</h2>
+            <p class="lead">Нам важно знать, как прошёл процесс. Оставьте заявку — менеджер свяжется с вами.</p>
+        </div>
+        <div class="lead-card">
+            <LeadForm Source="reviews" ButtonText="Оставить отзыв" />
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<ReviewDto> _reviews = [];
+    private IReadOnlyList<ReviewDto> _text = [];
+    private IReadOnlyList<ReviewDto> _screenshots = [];
+    private IReadOnlyList<ReviewDto> _videos = [];
+    private string _tab = "text";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _reviews = await ReviewService.GetVisibleAsync();
+        _text = _reviews.Where(x => x.Type == "text").ToList();
+        _screenshots = _reviews.Where(x => x.Type == "screenshot" && !string.IsNullOrWhiteSpace(x.ScreenshotUrl)).ToList();
+        _videos = _reviews.Where(x => x.Type == "video").ToList();
+    }
+
+    private static string Stars(int? rating) =>
+        rating is null or 0 ? "★★★★★" : string.Concat(Enumerable.Repeat("★", Math.Clamp(rating.Value, 0, 5)));
+}
+

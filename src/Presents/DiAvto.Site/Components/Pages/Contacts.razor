@@ -1,0 +1,83 @@
+@page "/contacts"
+@inject IOfficeService OfficeService
+@inject ISiteSettingsService SettingsService
+
+<PageTitle>Контакты — ДИ.авто</PageTitle>
+
+<section class="page-head">
+    <div class="container">
+        <span class="eyebrow">Контакты</span>
+        <h1>Свяжитесь с нами</h1>
+        <p>Позвоните, напишите в мессенджер или оставьте заявку — ответим в рабочее время.</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container contacts-layout">
+        <div class="contacts-info">
+            <h2>Офисы</h2>
+            <div class="office-grid">
+                @for (var i = 0; i < _offices.Count; i++)
+                {
+                    var index = i;
+                    var office = _offices[i];
+                    <button class="office-card @(index == _selected ? "active" : "")" @onclick="() => _selected = index">
+                        <strong>@office.City</strong>
+                        <span>@office.Address</span>
+                    </button>
+                }
+            </div>
+
+            <h2>Контакты</h2>
+            <div class="contact-lines">
+                <a href="@_settings.PhoneHref">@_settings.Phone</a>
+                @if (!string.IsNullOrWhiteSpace(_settings.Phone2))
+                {
+                    <a href="@_settings.Phone2Href">@_settings.Phone2</a>
+                }
+                <a href="@_settings.EmailHref">@_settings.Email</a>
+                <span>Пн–Пт: 09:00–19:00 · Сб–Вс: выходной</span>
+            </div>
+
+            <div class="footer-socials">
+                <a href="@_settings.WhatsAppUrl" target="_blank" rel="noopener">WA</a>
+                <a href="@_settings.TelegramUrl" target="_blank" rel="noopener">TG</a>
+                <a href="@_settings.VkUrl" target="_blank" rel="noopener">VK</a>
+                <a href="@_settings.MaxUrl" target="_blank" rel="noopener">MAX</a>
+            </div>
+
+            @if (_offices.Count > 0 && _offices[Math.Clamp(_selected, 0, _offices.Count - 1)].Latitude is not null)
+            {
+                var office = _offices[Math.Clamp(_selected, 0, _offices.Count - 1)];
+                <iframe class="map" src="@MapUrl(office)" title="Карта офиса @office.City" loading="lazy"></iframe>
+            }
+        </div>
+
+        <div class="lead-card" id="lead">
+            <h2>Оставить заявку</h2>
+            <p class="muted">Ответим в течение 15 минут в рабочее время.</p>
+            <LeadForm Source="contacts" ButtonText="Отправить заявку" />
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<OfficeDto> _offices = [];
+    private SiteSettingsDto _settings = new(
+        SiteContent.CompanyName, SiteContent.CompanyTagline, SiteContent.Phone, SiteContent.Phone2,
+        SiteContent.Email, SiteContent.WhatsAppUrl, SiteContent.TelegramUrl, SiteContent.VkUrl, SiteContent.MaxUrl);
+    private int _selected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _offices = await OfficeService.GetActiveAsync();
+        _settings = await SettingsService.GetAsync();
+    }
+
+    private static string MapUrl(OfficeDto office)
+    {
+        var lat = office.Latitude ?? 0m;
+        var lng = office.Longitude ?? 0m;
+        return $"https://yandex.ru/map-widget/v1/?ll={lng.ToString(System.Globalization.CultureInfo.InvariantCulture)},{lat.ToString(System.Globalization.CultureInfo.InvariantCulture)}&z=16&l=map&pt={lng.ToString(System.Globalization.CultureInfo.InvariantCulture)},{lat.ToString(System.Globalization.CultureInfo.InvariantCulture)},pm2rdm";
+    }
+}

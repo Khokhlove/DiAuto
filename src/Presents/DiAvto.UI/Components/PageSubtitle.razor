@@ -1,0 +1,8 @@
+@if (!string.IsNullOrWhiteSpace(Text))
+{
+    <p class="page-subtitle">@Text</p>
+}
+
+@code {
+    [Parameter] public string? Text { get; set; }
+}

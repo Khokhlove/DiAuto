@@ -1,0 +1,29 @@
+@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>Ошибка — DiAvto</PageTitle>
+
+<div class="container page-pad">
+    <EmptyState Title="Произошла ошибка"
+                Description="Не удалось обработать запрос. Попробуйте обновить страницу или вернуться на главную."
+                Icon="⚠️">
+        <a class="btn btn-primary" href="/">На главную</a>
+    </EmptyState>
+
+    @if (ShowRequestId)
+    {
+        <p class="muted" style="text-align:center;font-size:11px">ID запроса: <code>@RequestId</code></p>
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}
+

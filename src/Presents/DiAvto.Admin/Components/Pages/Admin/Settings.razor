@@ -1,0 +1,57 @@
+@page "/admin/settings"
+@rendermode InteractiveServer
+@using Microsoft.Extensions.Options
+@using DiAvto.Admin.Features.Marketplaces.Che168
+@attribute [Authorize(Policy = "AdminPage.integration")]
+@inject IOptions<Che168Options> Che168Options
+@inject IOptions<SearchOptions> SearchOptions
+
+<PageTitle>Интеграция — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Система" Title="Интеграция" />
+
+<div class="admin-two-col">
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="eyebrow">che168</span><h2>Мобильный API</h2></div>
+        </div>
+
+        <div class="alert alert-info" role="alert">
+            Используется <strong>неофициальный мобильный API</strong> che168 / Autohome. Публичной документации и
+            гарантий стабильности нет: адреса, подпись и формат ответа могут измениться без предупреждения.
+        </div>
+
+        <dl class="aside-list">
+            <div>
+                <dt>API поиска и каталога</dt>
+                <dd class="mono">@Che168Options.Value.ApiBaseUrl</dd>
+            </div>
+            <div>
+                <dt>API карточки автомобиля</dt>
+                <dd class="mono">@Che168Options.Value.DetailApiBaseUrl</dd>
+            </div>
+            <div><dt>ID приложения</dt><dd class="mono">@Che168Options.Value.AppId</dd></div>
+            <div><dt>Версия клиента</dt><dd class="mono">@Che168Options.Value.AppVersion</dd></div>
+            <div><dt>Лимит страниц выдачи</dt><dd>@SearchOptions.Value.MaxPagesPerTier на каждую сортировку</dd></div>
+            <div><dt>Параллельная загрузка</dt><dd>@SearchOptions.Value.DetailsConcurrency карточек одновременно</dd></div>
+        </dl>
+    </section>
+
+    <div class="admin-side">
+        <section class="panel">
+            <div class="panel-head">
+                <div><span class="eyebrow">Источник</span><h2>Ограничения</h2></div>
+            </div>
+            <p class="aside-note">
+                Сервис не обходит капчу и авторизацию, не автоматизирует браузер и не гарантирует доступность
+                che168. При изменении API синхронизация каталога и поиск могут временно вернуть ошибку или пустую
+                выдачу.
+            </p>
+            <p class="aside-note">
+                Данные и фотографии принадлежат che168.com / Autohome. Ссылка на оригинальное объявление
+                сохраняется в каждой карточке.
+            </p>
+        </section>
+    </div>
+</div>
+

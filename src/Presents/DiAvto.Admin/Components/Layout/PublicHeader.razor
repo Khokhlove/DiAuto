@@ -1,0 +1,33 @@
+<header class="site-header">
+    <div class="container header-inner">
+        <a class="site-brand" href="/" aria-label="DiAvto — поиск">
+            <img class="site-brand-logo" src="/logo.webp" alt="" width="44" height="32" />
+            <span class="site-brand-text">
+                <strong>DiAvto</strong>
+                <small>внутренний поиск</small>
+            </span>
+        </a>
+
+        <div class="header-actions">
+            <AuthorizeView>
+                <Authorized Context="signedInUser">
+                    <AuthorizeView Policy="AdminPanel">
+                        <Authorized Context="adminUser">
+                            <a class="btn btn-sm btn-dark-outline" href="/admin">Админка</a>
+                        </Authorized>
+                    </AuthorizeView>
+
+                    <form method="post" action="/Account/Logout" class="header-logout">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="ReturnUrl" value="/" />
+                        <button type="submit" class="btn btn-sm btn-dark-outline">Выйти</button>
+                    </form>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="btn btn-sm btn-dark-outline header-login" href="/Account/Login">Вход</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    </div>
+</header>
+

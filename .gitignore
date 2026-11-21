@@ -17,5 +17,9 @@ obj/
 tests/**/TestResults/
 TestResults/
 artifacts/
+publish/
+publish-linux/
+backups/
+*.tar.gz
 *.log
 appsettings.Local.json

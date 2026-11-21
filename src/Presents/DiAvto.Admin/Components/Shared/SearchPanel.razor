@@ -1,0 +1,429 @@
+@inject CatalogService CatalogService
+@inject SearchExecutionService SearchExecutionService
+@inject NavigationManager NavigationManager
+
+<div class="search-panel" id="search">
+    <div class="search-panel-head">
+        <div>
+            <h2>Поиск по источнику</h2>
+        </div>
+        <div class="source-pill">
+            <span class="source-pill-dot"></span>
+            @(SourceSite?.Name ?? "Источник")
+        </div>
+    </div>
+
+    @if (_loadError is not null)
+    {
+        <div class="alert alert-danger" role="alert">
+            @_loadError
+            <button type="button" class="alert-link-button" @onclick="LoadBrandsAsync">Повторить</button>
+        </div>
+    }
+
+    <EditForm Model="_model" OnSubmit="RunSearchAsync">
+        <div class="search-grid">
+            <div class="form-field span-2">
+                <label for="brandSelect">Марка <span class="required">*</span></label>
+                <div class="select-wrap">
+                    <select id="brandSelect" class="form-select" @bind="_model.BrandId" @bind:after="OnBrandChangedAsync">
+                        <option value="0">@(_brandsLoading ? "Загружаем марки…" : "Выберите марку")</option>
+                        @foreach (var brand in _brands)
+                        {
+                            <option value="@brand.Id">@brand.DisplayName</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-field span-2">
+                <label for="seriesSelect">Модель</label>
+                <div class="select-wrap">
+                    <select id="seriesSelect" class="form-select" @bind="_model.SeriesId" disabled="@(_model.BrandId == 0 || _seriesLoading)">
+                        <option value="">@(_seriesLoading ? "Загружаем модели…" : "Все модели")</option>
+                        @foreach (var series in _series)
+                        {
+                            <option value="@series.Id">@SeriesLabel(series)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-field">
+                <label for="yearFrom">Год от</label>
+                <input id="yearFrom" type="number" class="form-control" min="1990" max="@DateTime.Now.Year"
+                       placeholder="2018" @bind="_model.YearFrom" />
+            </div>
+
+            <div class="form-field">
+                <label for="yearTo">Год до</label>
+                <input id="yearTo" type="number" class="form-control" min="1990" max="@DateTime.Now.Year"
+                       placeholder="@DateTime.Now.Year" @bind="_model.YearTo" />
+            </div>
+
+            <div class="form-field">
+                <label for="mileageMax">Пробег до, км</label>
+                <input id="mileageMax" type="number" class="form-control" min="0" step="1"
+                       placeholder="100000" @bind="_model.MileageMaxKm" />
+            </div>
+
+            @if (_showAdvanced)
+            {
+                <div class="form-field">
+                    <label for="displacementFrom">Объём от, л</label>
+                    <input id="displacementFrom" type="number" class="form-control" min="0" step="0.1"
+                           placeholder="1.5" @bind="_model.DisplacementFromL" />
+                </div>
+
+                <div class="form-field">
+                    <label for="displacementTo">Объём до, л</label>
+                    <input id="displacementTo" type="number" class="form-control" min="0" step="0.1"
+                           placeholder="2.0" @bind="_model.DisplacementToL" />
+                </div>
+
+                <div class="form-field">
+                    <label for="gearbox">КПП</label>
+                    <select id="gearbox" class="form-select" @bind="_model.Gearbox">
+                        <option value="0">Любая</option>
+                        <option value="1">Механика</option>
+                        <option value="2">Автомат</option>
+                    </select>
+                </div>
+
+                <div class="form-field">
+                    <label for="fuelType">Топливо</label>
+                    <select id="fuelType" class="form-select" @bind="_model.FuelType">
+                        <option value="0">Любое</option>
+                        <option value="1">Бензин</option>
+                        <option value="2">Дизель</option>
+                        <option value="3">Гибрид</option>
+                        <option value="5">Подключаемый гибрид</option>
+                        <option value="6">Гибрид с увеличенным запасом</option>
+                        <option value="7">Электро</option>
+                    </select>
+                </div>
+
+                <div class="form-field">
+                    <label for="powertrain">Привод</label>
+                    <select id="powertrain" class="form-select" @bind="_model.Powertrain">
+                        <option value="0">Любой</option>
+                        <option value="1">Передний</option>
+                        <option value="2">Задний</option>
+                        <option value="3">Полный</option>
+                    </select>
+                </div>
+
+                <div class="form-field">
+                    <label for="structure">Кузов</label>
+                    <select id="structure" class="form-select" @bind="_model.Structure">
+                        <option value="0">Любой</option>
+                        <option value="2">Седан</option>
+                        <option value="1">Хэтчбек</option>
+                        <option value="3">Лифтбек</option>
+                        <option value="4">Универсал</option>
+                        <option value="5">Кабриолет (жёсткий)</option>
+                        <option value="6">Кабриолет (мягкий)</option>
+                        <option value="7">Купе / спорткар</option>
+                        <option value="8">Автобус</option>
+                        <option value="9">Грузовик</option>
+                    </select>
+                </div>
+
+                <div class="form-field">
+                    <label for="categoryId">Класс</label>
+                    <select id="categoryId" class="form-select" @bind="_model.CategoryId">
+                        <option value="0">Любой</option>
+                        <option value="1">Мини-класс</option>
+                        <option value="2">Малый класс</option>
+                        <option value="3">Компактный класс</option>
+                        <option value="4">Средний класс</option>
+                        <option value="5">Бизнес-класс</option>
+                        <option value="6">Большой класс</option>
+                        <option value="17">Компактный SUV</option>
+                        <option value="18">Средний SUV</option>
+                        <option value="19">Бизнес SUV</option>
+                        <option value="20">Большой SUV</option>
+                        <option value="8">MPV / минивэн</option>
+                        <option value="7">Спорткар</option>
+                        <option value="14">Пикап</option>
+                    </select>
+                </div>
+
+                <div class="form-field">
+                    <label for="environmental">Экокласс</label>
+                    <select id="environmental" class="form-select" @bind="_model.Environmental">
+                        <option value="0">Любой</option>
+                        <option value="6">Китай-6</option>
+                        <option value="5">Китай-5</option>
+                        <option value="4">Китай-4</option>
+                        <option value="3">Китай-3</option>
+                        <option value="2">Китай-2</option>
+                        <option value="106">Евро-6</option>
+                        <option value="105">Евро-5</option>
+                        <option value="104">Евро-4</option>
+                        <option value="103">Евро-3</option>
+                        <option value="102">Евро-2</option>
+                    </select>
+                </div>
+
+                <div class="form-field">
+                    <label for="seats">Мест</label>
+                    <select id="seats" class="form-select" @bind="_model.Seats">
+                        <option value="0">Любое</option>
+                        <option value="2">2</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="99">7+</option>
+                    </select>
+                </div>
+            }
+        </div>
+
+        <div class="search-actions">
+            <button type="button" class="btn btn-sm btn-advanced" @onclick="ToggleAdvanced"
+                    title="Объём, КПП, топливо, привод, кузов, класс, экокласс, места">
+                @(_showAdvanced ? "Скрыть дополнительные фильтры" : "Дополнительные фильтры")
+            </button>
+
+            <button type="submit" class="btn btn-primary btn-search" disabled="@_busy">
+                @if (_busy)
+                {
+                    <span class="spinner"></span>
+                    <span>Ищем на che168…</span>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                    <span>Найти автомобили</span>
+                }
+            </button>
+        </div>
+    </EditForm>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@_error</div>
+    }
+
+    @if (_brandsLoading || _seriesLoading)
+    {
+        <div class="loading-toast" role="status" aria-live="polite">
+            <span class="spinner"></span>
+            <span class="loading-toast-text">
+                <strong>@(_seriesLoading ? "Загружаем модели…" : "Загружаем марки…")</strong>
+                <span>Обычно это занимает пару секунд.</span>
+            </span>
+        </div>
+    }
+
+    @if (_busy)
+    {
+        <div class="search-overlay" aria-live="polite">
+            <div class="search-progress-card">
+                <div class="search-progress-icon">
+                    <span class="pulse-ring"></span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                </div>
+                <h3>Собираем предложения</h3>
+                <p>Запрашиваем che168, отбираем крайние цены и загружаем фотографии. Обычно это занимает 10–30 секунд.</p>
+                <div class="progress-steps">
+                    <span class="active">Поиск по каталогу</span>
+                    <span>Отбор 3 + 3</span>
+                    <span>Детали и фото</span>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public SourceSite? SourceSite { get; set; }
+
+    [Parameter]
+    public SearchBudgetState BudgetState { get; set; } = new();
+
+    private readonly SearchFormModel _model = new();
+    private List<Brand> _brands = [];
+    private List<CarSeries> _series = [];
+    private bool _brandsLoading = true;
+    private bool _seriesLoading;
+    private bool _busy;
+    private bool _showAdvanced;
+    private string? _error;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBrandsAsync();
+    }
+
+    private async Task LoadBrandsAsync()
+    {
+        _brandsLoading = true;
+        _loadError = null;
+        StateHasChanged();
+
+        try
+        {
+            _brands = await CatalogService.GetBrandsAsync(sourceSiteId: SourceSite?.Id);
+        }
+        catch (Exception ex)
+        {
+            _loadError = $"Не удалось загрузить каталог марок: {ex.Message}";
+        }
+        finally
+        {
+            _brandsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnBrandChangedAsync()
+    {
+        _model.SeriesId = null;
+        _series = [];
+        _error = null;
+
+        if (_model.BrandId <= 0)
+        {
+            return;
+        }
+
+        _seriesLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            _series = await CatalogService.GetSeriesAsync(_model.BrandId);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Не удалось загрузить модели: {ex.Message}";
+        }
+        finally
+        {
+            _seriesLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RunSearchAsync()
+    {
+        _error = null;
+
+        var criteria = new SearchCriteria
+        {
+            BrandId = _model.BrandId,
+            SeriesId = _model.SeriesId,
+            YearFrom = _model.YearFrom,
+            YearTo = _model.YearTo,
+            PriceFrom = BudgetState.PriceFrom,
+            PriceTo = BudgetState.PriceTo,
+            PriceCurrency = BudgetState.Currency,
+            MileageMaxKm = _model.MileageMaxKm,
+            DisplacementFromL = _model.DisplacementFromL,
+            DisplacementToL = _model.DisplacementToL,
+            Gearbox = _model.Gearbox > 0 ? _model.Gearbox : null,
+            FuelType = _model.FuelType > 0 ? _model.FuelType : null,
+            Powertrain = _model.Powertrain > 0 ? _model.Powertrain : null,
+            CategoryId = _model.CategoryId > 0 ? _model.CategoryId : null,
+            Structure = _model.Structure > 0 ? _model.Structure : null,
+            Environmental = _model.Environmental > 0 ? _model.Environmental : null,
+            Seats = _model.Seats > 0 ? _model.Seats : null,
+            DeliveryFromVladivostokTariffId = IdOrNull(BudgetState.DeliveryFromVladivostokTariffId),
+            DeliveryToVladivostokAmount = BudgetState.DeliveryToVladivostokAmount,
+            DeliveryToVladivostokCurrency = BudgetState.DeliveryToVladivostokCurrency,
+            EngineCc = BudgetState.EngineCc,
+            PowerHp = BudgetState.PowerHp,
+            VehicleYear = BudgetState.VehicleYear,
+            IsDiesel = BudgetState.IsDiesel,
+            IsElectric = BudgetState.IsElectric,
+            IsLegalEntity = BudgetState.IsLegalEntity,
+            UseResaleUtilization = BudgetState.UseResaleUtilization,
+            IncludeDeliveryToCity = BudgetState.IncludeDeliveryToCity
+        };
+
+        try
+        {
+            SearchCriteriaValidator.Validate(criteria);
+        }
+        catch (ArgumentException ex)
+        {
+            _error = ex.Message;
+            return;
+        }
+
+        if (BudgetState.BuildPlan() is { IsTooLow: true })
+        {
+            _error = "Бюджет меньше суммы расходов. Увеличьте бюджет или измените тарифы.";
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+
+        try
+        {
+            var request = await SearchExecutionService.ExecuteAsync(criteria);
+            NavigationManager.NavigateTo($"/search/{request.PublicId}");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private string SeriesLabel(CarSeries series)
+    {
+        if (!string.IsNullOrWhiteSpace(series.NameRu))
+        {
+            return series.NameRu;
+        }
+
+        var name = series.Name;
+        var brand = _brands.FirstOrDefault(x => x.Id == series.BrandId);
+
+        if (brand is not null && name.StartsWith(brand.Name, StringComparison.Ordinal))
+        {
+            name = name[brand.Name.Length..].Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(series.Pinyin))
+        {
+            return $"{name} ({series.Pinyin})";
+        }
+
+        return string.IsNullOrWhiteSpace(name) ? series.DisplayName : name;
+    }
+
+    private static int? IdOrNull(int id) => id > 0 ? id : null;
+
+    private void ToggleAdvanced()
+    {
+        _showAdvanced = !_showAdvanced;
+    }
+
+    private sealed class SearchFormModel
+    {
+        public int BrandId { get; set; }
+        public int? SeriesId { get; set; }
+        public int? YearFrom { get; set; }
+        public int? YearTo { get; set; }
+        public int? MileageMaxKm { get; set; }
+        public decimal? DisplacementFromL { get; set; }
+        public decimal? DisplacementToL { get; set; }
+        public int Gearbox { get; set; }
+        public int FuelType { get; set; }
+        public int Powertrain { get; set; }
+        public int CategoryId { get; set; }
+        public int Structure { get; set; }
+        public int Environmental { get; set; }
+        public int Seats { get; set; }
+    }
+}
+

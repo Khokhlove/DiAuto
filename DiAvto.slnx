@@ -1,8 +1,13 @@
 <Solution>
-  <Folder Name="/src/">
-    <Project Path="src/DiAvto.Web/DiAvto.Web.csproj" />
+  <Project Path="src/Domain/DiAvto.Domain/DiAvto.Domain.csproj" />
+  <Folder Name="/tools/">
+    <Project Path="tools/DiAvto.MigrateLegacy/DiAvto.MigrateLegacy.csproj" />
+    <Project Path="tools/DiAvto.Seed/DiAvto.Seed.csproj" />
   </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/DiAvto.Tests/DiAvto.Tests.csproj" />
-  </Folder>
+  <Project Path="src/Application/DiAvto.Application/DiAvto.Application.csproj" />
+  <Project Path="src/Infrastructure/DiAvto.Infrastructure/DiAvto.Infrastructure.csproj" />
+  <Project Path="src/Presents/DiAvto.UI/DiAvto.UI.csproj" />
+  <Project Path="src/Presents/DiAvto.Site/DiAvto.Site.csproj" />
+  <Project Path="src/Presents/DiAvto.Admin/DiAvto.Admin.csproj" />
+  <Project Path="src/Tests/DiAvto.Tests/DiAvto.Tests.csproj" />
 </Solution>

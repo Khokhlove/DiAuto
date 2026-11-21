@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /card/
+Allow: /
+
+Sitemap: https://di-auto.ru/sitemap.xml

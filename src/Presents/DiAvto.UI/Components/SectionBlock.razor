@@ -1,0 +1,25 @@
+@using DiAvto.Application.Public
+
+<section class="section">
+    <div class="container">
+        <div class="section-head">
+            @if (!string.IsNullOrWhiteSpace(Eyebrow))
+            {
+                <span class="eyebrow">@Eyebrow</span>
+            }
+            <h2>@Title</h2>
+            @if (!string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <p>@Subtitle</p>
+            }
+        </div>
+        @ChildContent
+    </div>
+</section>
+
+@code {
+    [Parameter] public string? Eyebrow { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

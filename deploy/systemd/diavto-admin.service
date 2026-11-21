@@ -1,0 +1,24 @@
+[Unit]
+Description=DiAvto admin (admin.di-auto.ru)
+After=network.target
+
+[Service]
+Type=simple
+User=diavto
+Group=diavto
+WorkingDirectory=/opt/diavto/admin
+ExecStart=/opt/diavto/admin/DiAvto.Admin
+Restart=always
+RestartSec=5
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ConnectionStrings__DefaultConnection=Data Source=/opt/diavto/Data/diavto.db;Cache=Shared
+Environment=Seed__AdminUserName=admin
+Environment=Seed__AdminEmail=admin@diavto.local
+# Пароль задаётся вручную на сервере и не хранится в репозитории:
+# Environment=Seed__AdminPassword=...
+Environment=DOTNET_NOLOGO=1
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

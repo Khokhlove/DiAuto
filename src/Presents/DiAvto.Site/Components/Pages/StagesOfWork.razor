@@ -1,0 +1,84 @@
+@page "/stages-of-work"
+@inject IContentSectionService Sections
+@inject IFaqService Faq
+
+<PageTitle>Этапы работы — ДИ.авто</PageTitle>
+
+<section class="page-head">
+    <div class="container">
+        <span class="eyebrow">Как мы работаем</span>
+        <h1>Этапы работы</h1>
+        <p>От первого звонка до получения автомобиля — прозрачный процесс с отчётами на каждом шаге.</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="stages">
+            @foreach (var stage in _stages)
+            {
+                <article class="stage-card">
+                    <div class="stage-number">@stage.SortOrder</div>
+                    <div class="stage-body">
+                        <h2>@stage.Title</h2>
+                        @if (!string.IsNullOrWhiteSpace(stage.Description))
+                        {
+                            <ul>
+                                @foreach (var line in stage.Description.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                                {
+                                    <li>@line</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(stage.ImageUrl))
+                    {
+                        <img src="@stage.ImageUrl" alt="@stage.Title" loading="lazy" />
+                    }
+                </article>
+            }
+        </div>
+    </div>
+</section>
+
+<section class="section section-soft" id="faq">
+    <div class="container">
+        <div class="section-head">
+            <span class="eyebrow">Вопросы</span>
+            <h2>Частые вопросы</h2>
+        </div>
+        <div class="faq-list">
+            @foreach (var item in _faq)
+            {
+                <details class="faq-item">
+                    <summary>@item.Question</summary>
+                    <p>@item.Answer</p>
+                </details>
+            }
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container lead-block">
+        <div>
+            <span class="eyebrow">Остались вопросы?</span>
+            <h2>Обсудим ваш автомобиль</h2>
+            <p class="lead">Расскажите, что ищете — подберём варианты и рассчитаем стоимость под ключ.</p>
+        </div>
+        <div class="lead-card">
+            <LeadForm Source="stages" ButtonText="Получить консультацию" />
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<ContentSectionItemDto> _stages = [];
+    private IReadOnlyList<FaqItemDto> _faq = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stages = await Sections.GetItemsAsync("stages_of_work");
+        _faq = await Faq.GetVisibleAsync();
+    }
+}

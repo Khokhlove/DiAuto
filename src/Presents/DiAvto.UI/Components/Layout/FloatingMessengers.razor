@@ -1,0 +1,17 @@
+@inject ISiteSettingsService SettingsService
+
+<div class="floating-messengers">
+    <a href="@_settings.WhatsAppUrl" target="_blank" rel="noopener" class="float-btn float-wa" aria-label="Написать в WhatsApp">WA</a>
+    <a href="@_settings.TelegramUrl" target="_blank" rel="noopener" class="float-btn float-tg" aria-label="Написать в Telegram">TG</a>
+</div>
+
+@code {
+    private SiteSettingsDto _settings = new(
+        SiteContent.CompanyName, SiteContent.CompanyTagline, SiteContent.Phone, SiteContent.Phone2,
+        SiteContent.Email, SiteContent.WhatsAppUrl, SiteContent.TelegramUrl, SiteContent.VkUrl, SiteContent.MaxUrl);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _settings = await SettingsService.GetAsync();
+    }
+}

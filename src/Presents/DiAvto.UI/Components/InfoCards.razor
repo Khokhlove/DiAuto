@@ -1,0 +1,35 @@
+@using DiAvto.Application.Public
+
+@if (Items.Count > 0)
+{
+    <div class="section-grid @(GridClass)">
+        @foreach (var item in Items)
+        {
+            <article class="info-card">
+                @if (!string.IsNullOrWhiteSpace(item.ImageUrl))
+                {
+                    <img src="@item.ImageUrl" alt="@item.Title" loading="lazy" />
+                }
+                else
+                {
+                    <span class="info-icon">✓</span>
+                }
+                <h3>@item.Title</h3>
+                @if (!string.IsNullOrWhiteSpace(item.Description))
+                {
+                    <ul>
+                        @foreach (var line in item.Description.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        {
+                            <li>@line</li>
+                        }
+                    </ul>
+                }
+            </article>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ContentSectionItemDto> Items { get; set; } = [];
+    [Parameter] public string GridClass { get; set; } = "";
+}

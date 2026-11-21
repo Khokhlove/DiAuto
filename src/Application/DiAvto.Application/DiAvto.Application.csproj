@@ -1,0 +1,9 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>DiAvto.Application</RootNamespace>
+    <AssemblyName>DiAvto.Application</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Domain\DiAvto.Domain\DiAvto.Domain.csproj" />
+  </ItemGroup>
+</Project>

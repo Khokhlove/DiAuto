@@ -1,0 +1,34 @@
+<div class="stat-card @AccentClass">
+    <div class="stat-card-head">
+        <span class="stat-label">@Label</span>
+        @if (!string.IsNullOrWhiteSpace(Icon))
+        {
+            <span class="stat-icon">@Icon</span>
+        }
+    </div>
+    <strong class="stat-value">@Value</strong>
+    @if (!string.IsNullOrWhiteSpace(Hint))
+    {
+        <span class="stat-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Hint { get; set; }
+
+    [Parameter]
+    public string? Icon { get; set; }
+
+    [Parameter]
+    public string? Accent { get; set; }
+
+    private string AccentClass => string.IsNullOrWhiteSpace(Accent) ? "" : $"stat-{Accent}";
+}
+

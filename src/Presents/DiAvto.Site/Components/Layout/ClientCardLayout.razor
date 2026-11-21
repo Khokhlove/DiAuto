@@ -1,0 +1,30 @@
+@inherits LayoutComponentBase
+
+<HeadContent>
+    <meta name="robots" content="noindex, nofollow" />
+</HeadContent>
+
+<div class="client-site-shell">
+    <header class="client-site-header">
+        <div class="container client-header-inner">
+            <a class="brand client-brand" href="/">
+                <img src="/logo.webp" alt="ДИ.авто" width="52" height="38" />
+                <span class="brand-copy">
+                    <strong>ДИ.авто</strong>
+                    <small>импорт автомобилей из Азии</small>
+                </span>
+            </a>
+            <span class="client-header-note">Персональное предложение</span>
+        </div>
+    </header>
+
+    <main class="site-main">
+        @Body
+    </main>
+
+    <footer class="client-site-footer">
+        <div class="container footer-minimal">
+            <span>© @DateTime.Now.Year ДИ.авто · подбор и доставка автомобилей из Азии</span>
+        </div>
+    </footer>
+</div>

@@ -1,0 +1,20 @@
+[Unit]
+Description=DiAvto public site (di-auto.ru)
+After=network.target
+
+[Service]
+Type=simple
+User=diavto
+Group=diavto
+WorkingDirectory=/opt/diavto/site
+ExecStart=/opt/diavto/site/DiAvto.Site
+Restart=always
+RestartSec=5
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ConnectionStrings__DefaultConnection=Data Source=/opt/diavto/Data/diavto.db;Cache=Shared
+Environment=DOTNET_NOLOGO=1
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <RootNamespace>DiAvto.UI</RootNamespace>
+    <AssemblyName>DiAvto.UI</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Application\DiAvto.Application\DiAvto.Application.csproj" />
+    <ProjectReference Include="..\..\Domain\DiAvto.Domain\DiAvto.Domain.csproj" />
+  </ItemGroup>
+</Project>

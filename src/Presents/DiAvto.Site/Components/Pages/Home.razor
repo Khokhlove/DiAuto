@@ -1,0 +1,187 @@
+﻿@page "/"
+@inject IShowcaseCarService Cars
+@inject IContentSectionService Sections
+@inject NavigationManager Navigation
+
+<PageTitle>ДИ.авто — импорт автомобилей из Азии</PageTitle>
+
+<section class="hero">
+    <div class="hero-bg" style="background-image:url('@SiteContent.HeroSlides[0].ImageUrl')"></div>
+    <div class="container hero-inner">
+        <span class="hero-kicker">Япония · Корея · Китай</span>
+        <h1>@SiteContent.HeroSlides[0].Title</h1>
+        <p>@SiteContent.HeroSlides[0].Subtitle</p>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="/catalog">Смотреть каталог</a>
+            <a class="btn btn-ghost-light" href="/contacts#lead">Получить консультацию</a>
+        </div>
+        <div class="hero-stats">
+            @foreach (var stat in SiteContent.Stats)
+            {
+                <div><strong>@stat.Value</strong><span>@stat.Label</span></div>
+            }
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="section-head split">
+            <div>
+                <span class="eyebrow">Витрина</span>
+                <h2>Горячие предложения</h2>
+                <p>Автомобили, которые уже в наличии или готовы к выкупу.</p>
+            </div>
+            <a class="btn btn-outline" href="/catalog">Весь каталог →</a>
+        </div>
+        <div class="car-grid">
+            @foreach (var car in _featured)
+            {
+                <CarCard Car="car" />
+            }
+        </div>
+    </div>
+</section>
+
+<section class="section section-soft">
+    <div class="container">
+        <div class="section-head">
+            <span class="eyebrow">Гарантии</span>
+            <h2>Почему нам доверяют</h2>
+            <p>Берём на себя весь путь автомобиля — от проверки до передачи ключей.</p>
+        </div>
+        <InfoCards Items="_guarantees" />
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="section-head">
+            <span class="eyebrow">Комиссия</span>
+            <h2>Что входит в нашу комиссию</h2>
+            <p>Всё включено — вы получаете полностью готовый к эксплуатации автомобиль.</p>
+        </div>
+        <div class="commission-grid">
+            @foreach (var category in SiteContent.CommissionServices)
+            {
+                <article class="commission-card">
+                    <h3>@category.Title</h3>
+                    <ul>
+                        @foreach (var item in category.Items)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                </article>
+            }
+        </div>
+    </div>
+</section>
+
+<section class="section section-soft">
+    <div class="container">
+        <div class="section-head">
+            <span class="eyebrow">Преимущества</span>
+            <h2>Почему выбирают нас</h2>
+        </div>
+        <InfoCards Items="_advantages" />
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="section-head">
+            <span class="eyebrow">Азия</span>
+            <h2>Почему выгодно покупать авто из Азии</h2>
+        </div>
+        <InfoCards Items="_whyAsia" />
+    </div>
+</section>
+
+<section class="section section-soft">
+    <div class="container">
+        <div class="section-head">
+            <span class="eyebrow">Площадки</span>
+            <h2>Работаем с проверенными площадками</h2>
+        </div>
+        <div class="platform-grid">
+            @foreach (var platform in SiteContent.PartnerPlatforms)
+            {
+                <a href="@platform.Url" target="_blank" rel="noopener" class="platform-card">
+                    <img src="@platform.LogoUrl" alt="@platform.Name" loading="lazy" />
+                    <span>@platform.Name</span>
+                </a>
+            }
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container two-col">
+        <div>
+            <span class="eyebrow">Автокредит</span>
+            <h2>Поможем оформить кредит или рассрочку</h2>
+            <p class="lead">Работаем с банками и юридическими лицами. Формируем заявку и сопровождаем сделку.</p>
+            <a class="btn btn-primary" href="/auto-credit">Узнать условия</a>
+        </div>
+        <div class="callout-card">
+            <strong>От 3 недель</strong>
+            <span>средний срок доставки до Владивостока</span>
+            <strong>450+</strong>
+            <span>автомобилей уже доставлено клиентам</span>
+        </div>
+    </div>
+</section>
+
+<section class="section section-soft">
+    <div class="container two-col">
+        <div>
+            <span class="eyebrow">О компании</span>
+            <h2>ДИ.авто — команда, которая знает Азию</h2>
+            <p class="lead">Подбираем автомобили с проверенных площадок Японии, Кореи и Китая. Полный цикл: от диагностики до постановки на учёт.</p>
+            <a class="btn btn-outline" href="/about">Подробнее о нас</a>
+        </div>
+        <div class="benefit-list">
+            @foreach (var benefit in SiteContent.ClientBenefits)
+            {
+                <article>
+                    <h3>@benefit.Title</h3>
+                    <p>@benefit.Description</p>
+                </article>
+            }
+        </div>
+    </div>
+</section>
+
+<section class="section" id="lead">
+    <div class="container lead-block">
+        <div>
+            <span class="eyebrow">Связаться</span>
+            <h2>Подберём автомобиль под ваш бюджет</h2>
+            <p class="lead">Оставьте заявку — менеджер свяжется с вами, уточнит параметры и пришлёт подборку.</p>
+            <ul class="check-list">
+                <li>Бесплатная консультация</li>
+                <li>Без предоплаты</li>
+                <li>Ответим в течение 15 минут в рабочее время</li>
+            </ul>
+        </div>
+        <div class="lead-card">
+            <LeadForm Source="home" ButtonText="Получить подборку" />
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<ShowcaseCarDto> _featured = [];
+    private IReadOnlyList<ContentSectionItemDto> _guarantees = [];
+    private IReadOnlyList<ContentSectionItemDto> _advantages = [];
+    private IReadOnlyList<ContentSectionItemDto> _whyAsia = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _featured = await Cars.GetFeaturedAsync(6);
+        _guarantees = await Sections.GetItemsAsync("guarantees");
+        _advantages = await Sections.GetItemsAsync("advantages");
+        _whyAsia = await Sections.GetItemsAsync("why_asia");
+    }
+}

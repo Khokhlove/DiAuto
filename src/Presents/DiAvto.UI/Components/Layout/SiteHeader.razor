@@ -1,0 +1,89 @@
+@inject ISiteSettingsService SettingsService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<header class="site-header @(_isHome ? "is-home" : "") @(_mobileOpen ? "menu-open" : "")">
+    <div class="container header-inner">
+        <a class="brand" href="/" @onclick="CloseMenu">
+            <img src="/logo.webp" alt="ДИ.авто" width="52" height="38" />
+            <span class="brand-copy">
+                <strong>ДИ.авто</strong>
+                <small>импорт автомобилей из Азии</small>
+            </span>
+        </a>
+
+        <nav class="main-nav @(_mobileOpen ? "open" : "")">
+            @foreach (var link in SiteContent.NavLinks)
+            {
+                <a href="@link.Url" class="@(IsActive(link.Url) ? "active" : "")" @onclick="CloseMenu">@link.Label</a>
+            }
+            <a class="nav-phone" href="@_settings.PhoneHref">@_settings.Phone</a>
+            <a class="btn btn-primary nav-cta" href="/contacts#lead" @onclick="CloseMenu">@SiteContent.CarActionLabel</a>
+        </nav>
+
+        <button class="mobile-toggle" type="button" @onclick="ToggleMenu" aria-label="Меню">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+</header>
+
+@code {
+    private SiteSettingsDto _settings = new(
+        SiteContent.CompanyName, SiteContent.CompanyTagline, SiteContent.Phone, SiteContent.Phone2,
+        SiteContent.Email, SiteContent.WhatsAppUrl, SiteContent.TelegramUrl, SiteContent.VkUrl, SiteContent.MaxUrl);
+    private bool _mobileOpen;
+    private bool _isHome;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isHome = IsHome();
+        Navigation.LocationChanged += OnLocationChanged;
+        _settings = await SettingsService.GetAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("diavtoHeaderScroll", _isHome);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Страница уже закрыта — ничего делать не нужно.
+        }
+        catch (InvalidOperationException)
+        {
+            // JS-хост ещё не готов при пререндере.
+        }
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
+    {
+        _isHome = IsHome();
+        _mobileOpen = false;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private bool IsHome()
+    {
+        var path = new Uri(Navigation.Uri).AbsolutePath.Trim('/');
+        return path.Length == 0;
+    }
+
+    private bool IsActive(string url)
+    {
+        var path = new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/');
+        var target = url.TrimEnd('/');
+        return target == "" ? path == "" : path.Equals(target, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ToggleMenu() => _mobileOpen = !_mobileOpen;
+
+    private void CloseMenu() => _mobileOpen = false;
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

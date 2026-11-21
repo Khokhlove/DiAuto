@@ -1,0 +1,92 @@
+@page "/about"
+
+<PageTitle>О компании — ДИ.авто</PageTitle>
+
+<section class="page-head">
+    <div class="container">
+        <span class="eyebrow">О компании</span>
+        <h1>О нас</h1>
+        <p>ДИ.авто — команда, которая помогает покупать автомобили из Японии, Кореи и Китая по выгодной цене.</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container stats-grid">
+        @foreach (var stat in SiteContent.Stats)
+        {
+            <div class="stat-card">
+                <strong>@stat.Value</strong>
+                <span>@stat.Label</span>
+            </div>
+        }
+    </div>
+</section>
+
+<section class="section section-soft">
+    <div class="container two-col">
+        <div>
+            <h2>Импорт автомобилей из Азии — это просто</h2>
+            <p class="lead">Мы специализируемся на подборе автомобилей из Японии, Кореи и Китая. Работаем с проверенными площадками и дилерами, берём на себя весь процесс — от диагностики до постановки на учёт.</p>
+            <p class="lead">Каждый автомобиль проходит полную проверку: юридическая чистота, техническое состояние, история эксплуатации. Вы получаете фото- и видеоотчёты на каждом этапе.</p>
+        </div>
+        <div class="video-placeholder">
+            <span>Видео о компании</span>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="section-head">
+            <h2>Что вы получаете</h2>
+        </div>
+        <div class="benefit-grid">
+            @foreach (var benefit in SiteContent.ClientBenefits)
+            {
+                <article class="info-card">
+                    <span class="info-icon">✓</span>
+                    <h3>@benefit.Title</h3>
+                    <p>@benefit.Description</p>
+                </article>
+            }
+        </div>
+    </div>
+</section>
+
+<section class="section section-soft">
+    <div class="container">
+        <div class="section-head">
+            <h2>Услуги под ключ</h2>
+        </div>
+        <div class="check-grid">
+            @foreach (var service in SiteContent.TurnkeyServices)
+            {
+                <div class="check-item">@service</div>
+            }
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container partner-card">
+        <div>
+            <span class="eyebrow">Партнёр</span>
+            <h2>YumaAuto</h2>
+            <p class="lead">Проверенный партнёр по выкупу и отправке автомобилей из Владивостока.</p>
+        </div>
+        <a class="btn btn-primary" href="https://yumauto.ru" target="_blank" rel="noopener">Перейти на сайт</a>
+    </div>
+</section>
+
+<section class="section section-soft">
+    <div class="container lead-block">
+        <div>
+            <span class="eyebrow">Связаться</span>
+            <h2>Познакомимся?</h2>
+            <p class="lead">Оставьте заявку — расскажем, как проходит процесс, и ответим на вопросы.</p>
+        </div>
+        <div class="lead-card">
+            <LeadForm Source="about" ButtonText="Связаться с нами" />
+        </div>
+    </div>
+</section>

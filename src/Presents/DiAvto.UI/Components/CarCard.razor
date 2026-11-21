@@ -1,0 +1,35 @@
+@using DiAvto.Application.Public
+
+<article class="car-card">
+    <a class="car-card-image" href="/catalog/@Car.Id">
+        <img src="@Car.MainImageUrl" alt="@Car.Name" loading="lazy" />
+        <span class="car-country">@Car.Country</span>
+        @if (Car.InStock)
+        {
+            <span class="car-stock">@SiteContent.InStockLabel</span>
+        }
+    </a>
+
+    <div class="car-card-body">
+        <h3><a href="/catalog/@Car.Id">@Car.Name</a></h3>
+        <div class="car-specs">
+            <span>@Car.Year</span>
+            <span>@Car.Engine</span>
+            <span>@Car.Transmission</span>
+            <span>@SiteFormat.Mileage(Car.MileageKm)</span>
+        </div>
+        <div class="car-card-footer">
+            <div>
+                <strong>@SiteFormat.Money(Car.PriceRub)</strong>
+                <small>@SiteContent.CarPriceDisclaimer</small>
+            </div>
+            <a class="car-link" href="/catalog/@Car.Id">Подробнее →</a>
+        </div>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public ShowcaseCarDto Car { get; set; } = null!;
+}
+

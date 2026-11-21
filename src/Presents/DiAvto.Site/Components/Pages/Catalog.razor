@@ -1,0 +1,155 @@
+@page "/catalog"
+@inject IShowcaseCarService Cars
+
+<PageTitle>Каталог автомобилей — ДИ.авто</PageTitle>
+
+<section class="page-head">
+    <div class="container">
+        <span class="eyebrow">Каталог</span>
+        <h1>Автомобили из Азии</h1>
+        <p>Подберите автомобиль по стране, марке, бюджету и характеристикам.</p>
+    </div>
+</section>
+
+<div class="container catalog-layout">
+    <aside class="catalog-filters">
+        <h2>Фильтры</h2>
+
+        <label>Поиск</label>
+        <input class="input" @bind="_filter.Search" placeholder="Марка, модель или слово" @bind:event="oninput" />
+
+        <label>Страна</label>
+        <select class="input" @bind="_filter.Country">
+            <option value="">Любая</option>
+            @foreach (var country in _facets.Countries)
+            {
+                <option value="@country">@country</option>
+            }
+        </select>
+
+        <label>Марка</label>
+        <select class="input" @bind="_filter.Make">
+            <option value="">Любая</option>
+            @foreach (var make in _facets.Makes)
+            {
+                <option value="@make">@make</option>
+            }
+        </select>
+
+        <label>Кузов</label>
+        <select class="input" @bind="_filter.BodyType">
+            <option value="">Любой</option>
+            @foreach (var body in _facets.BodyTypes)
+            {
+                <option value="@body">@body</option>
+            }
+        </select>
+
+        <label>Коробка</label>
+        <select class="input" @bind="_filter.Transmission">
+            <option value="">Любая</option>
+            @foreach (var transmission in _facets.Transmissions)
+            {
+                <option value="@transmission">@transmission</option>
+            }
+        </select>
+
+        <label>Топливо</label>
+        <select class="input" @bind="_filter.Fuel">
+            <option value="">Любое</option>
+            @foreach (var fuel in _facets.FuelTypes)
+            {
+                <option value="@fuel">@fuel</option>
+            }
+        </select>
+
+        <div class="filter-row">
+            <div>
+                <label>Цена от</label>
+                <input class="input" type="number" @bind="_filter.PriceFrom" />
+            </div>
+            <div>
+                <label>Цена до</label>
+                <input class="input" type="number" @bind="_filter.PriceTo" />
+            </div>
+        </div>
+
+        <div class="filter-row">
+            <div>
+                <label>Год от</label>
+                <input class="input" type="number" @bind="_filter.YearFrom" />
+            </div>
+            <div>
+                <label>Год до</label>
+                <input class="input" type="number" @bind="_filter.YearTo" />
+            </div>
+        </div>
+
+        <label>Сортировка</label>
+        <select class="input" @bind="_filter.Sort">
+            <option value="default">По умолчанию</option>
+            <option value="price-asc">Сначала дешевле</option>
+            <option value="price-desc">Сначала дороже</option>
+            <option value="year-desc">Сначала новые</option>
+            <option value="year-asc">Сначала старше</option>
+        </select>
+
+        <div class="filter-actions">
+            <button class="btn btn-primary" @onclick="ApplyAsync">Показать</button>
+            <button class="btn btn-outline" @onclick="ResetAsync">Сбросить</button>
+        </div>
+    </aside>
+
+    <section class="catalog-results">
+        <div class="catalog-topline">
+            <span>Найдено: <strong>@_cars.Count</strong></span>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="loading">Загружаем автомобили…</div>
+        }
+        else if (_cars.Count == 0)
+        {
+            <div class="empty-state">
+                <h3>Ничего не найдено</h3>
+                <p>Попробуйте изменить фильтры или сбросить их.</p>
+            </div>
+        }
+        else
+        {
+            <div class="car-grid">
+                @foreach (var car in _cars)
+                {
+                    <CarCard Car="car" />
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private ShowcaseCarFilter _filter = new();
+    private CatalogFacets _facets = new([], [], [], [], [], 0m, 0m, 0, 0);
+    private IReadOnlyList<ShowcaseCarDto> _cars = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _facets = await Cars.GetFacetsAsync();
+        await ApplyAsync();
+    }
+
+    private async Task ApplyAsync()
+    {
+        _loading = true;
+        _cars = await Cars.GetPublishedAsync(_filter with { Take = 200 });
+        _loading = false;
+    }
+
+    private async Task ResetAsync()
+    {
+        _filter = new ShowcaseCarFilter();
+        await ApplyAsync();
+    }
+}

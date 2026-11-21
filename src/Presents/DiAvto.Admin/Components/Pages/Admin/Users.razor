@@ -1,0 +1,391 @@
+@page "/admin/users"
+@attribute [Authorize(Policy = "AdminPage.users")]
+@rendermode InteractiveServer
+@using System.Security.Claims
+@inject UserManager<ApplicationUser> UserManager
+@inject AuditService Audit
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Пользователи — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Доступ" Title="Пользователи"
+            Description="Учётные записи и права на разделы админки. Публичной регистрации нет." />
+
+@if (_message is not null)
+{
+    <div class="alert alert-success">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="admin-two-col">
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="eyebrow">Учётные записи</span><h2>@_users.Count пользователя</h2></div>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="loading-block compact"><span class="spinner"></span><p>Загружаем пользователей…</p></div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Пользователь</th>
+                            <th>Роли</th>
+                            <th>Страницы</th>
+                            <th>Создан</th>
+                            <th>Статус</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _users)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@(row.User.DisplayName ?? row.User.Email)</strong>
+                                    <small class="muted">@row.User.Email</small>
+                                </td>
+                                <td>
+                                    @foreach (var role in row.Roles)
+                                    {
+                                        <span class="badge-soft">@RoleLabel(role)</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (row.IsAdmin)
+                                    {
+                                        <span class="badge-soft">Все страницы</span>
+                                    }
+                                    else if (row.PageKeys.Count == 0)
+                                    {
+                                        <span class="muted">Нет доступа</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@row.PageKeys.Count из @AdminPageAccess.Pages.Count</span>
+                                    }
+                                </td>
+                                <td class="muted">@DisplayFormat.Date(row.User.CreatedAt)</td>
+                                <td>
+                                    <span class="status-badge @(row.User.LockoutEnd > DateTimeOffset.UtcNow ? "status-failed" : "status-completed")">
+                                        <span class="status-dot"></span>@(row.User.LockoutEnd > DateTimeOffset.UtcNow ? "заблокирован" : "активен")
+                                    </span>
+                                </td>
+                                <td class="table-actions">
+                                    @if (!row.IsAdmin)
+                                    {
+                                        <button class="link-button" @onclick="() => TogglePermissions(row.User)" disabled="@_busy">
+                                            @(_permissionsUserId == row.User.Id ? "Скрыть права" : "Права")
+                                        </button>
+                                    }
+                                    @if (!row.Roles.Contains("Admin"))
+                                    {
+                                        <button class="link-button" @onclick="() => AddAdminAsync(row.User)" disabled="@_busy">Сделать администратором</button>
+                                    }
+                                    else if (!string.Equals(row.User.Email, _currentAdminEmail, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <button class="link-button danger" @onclick="() => RemoveAdminAsync(row.User)" disabled="@_busy">Снять администратора</button>
+                                    }
+                                </td>
+                            </tr>
+
+                            @if (_permissionsUserId == row.User.Id && !row.IsAdmin)
+                            {
+                                <tr class="permissions-row">
+                                    <td colspan="6">
+                                        <div class="permissions-editor">
+                                            <div class="permissions-head">
+                                                <div>
+                                                    <strong>Права на страницы</strong>
+                                                    <span>@row.User.Email</span>
+                                                </div>
+                                                <button class="btn btn-sm btn-outline-secondary" @onclick="ClosePermissions">Закрыть</button>
+                                            </div>
+
+                                            <div class="permissions-grid">
+                                                @foreach (var definition in AdminPageAccess.Pages)
+                                                {
+                                                    <label class="checkbox-row">
+                                                        <input type="checkbox"
+                                                               checked="@row.PageKeys.Contains(definition.Key)"
+                                                               disabled="@_busy"
+                                                               @onchange="e => TogglePageAsync(row.User, definition.Key, e.Value is true)" />
+                                                        <span>@definition.Title</span>
+                                                    </label>
+                                                }
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="eyebrow">Новый доступ</span><h2>Создать пользователя</h2></div>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-field span-2">
+                <label>Электронная почта</label>
+                <input class="form-control" type="email" @bind="_newEmail" placeholder="manager@diavto.local" />
+            </div>
+            <div class="form-field span-2">
+                <label>Отображаемое имя</label>
+                <input class="form-control" @bind="_newDisplayName" placeholder="Менеджер" />
+            </div>
+            <div class="form-field span-2">
+                <label>Пароль</label>
+                <input class="form-control" type="password" @bind="_newPassword" placeholder="Минимум 5 символов" />
+                <small class="field-help">Можно использовать простой пароль для внутреннего контура.</small>
+            </div>
+            <div class="form-field span-2">
+                <label>Роль</label>
+                <select class="form-select" @bind="_newRole">
+                    <option value="Manager">Менеджер</option>
+                    <option value="Admin">Администратор</option>
+                </select>
+                <small class="field-help">
+                    Администратор видит все разделы. Менеджер получает базовый набор, остальные страницы выдаются в таблице.
+                </small>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="CreateUserAsync" disabled="@_busy">
+                @if (_busy)
+                {
+                    <span class="spinner"></span>
+                }
+                Создать пользователя
+            </button>
+        </div>
+    </section>
+</div>
+
+@code {
+    private static readonly string[] DefaultManagerPages = ["dashboard", "searches", "listings"];
+
+    private bool _loading = true;
+    private bool _busy;
+    private string? _message;
+    private string? _error;
+    private string _newEmail = "";
+    private string _newDisplayName = "";
+    private string _newPassword = "";
+    private string _newRole = "Manager";
+    private string? _currentAdminEmail;
+    private string? _permissionsUserId;
+    private List<UserRow> _users = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _currentAdminEmail = state.User.Identity?.Name;
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        var users = UserManager.Users.OrderBy(x => x.CreatedAt).ToList();
+        _users = [];
+
+        foreach (var user in users)
+        {
+            var roles = (await UserManager.GetRolesAsync(user)).ToList();
+            var claims = await UserManager.GetClaimsAsync(user);
+            var pages = claims
+                .Where(x => x.Type == AdminPageAccess.ClaimType)
+                .Select(x => x.Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            _users.Add(new UserRow(user, roles, pages));
+        }
+    }
+
+    private async Task CreateUserAsync()
+    {
+        _message = null;
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_newEmail) || string.IsNullOrWhiteSpace(_newPassword))
+        {
+            _error = "Укажите email и пароль.";
+            return;
+        }
+
+        _busy = true;
+
+        try
+        {
+            var user = new ApplicationUser
+            {
+                UserName = _newEmail.Trim(),
+                Email = _newEmail.Trim(),
+                EmailConfirmed = true,
+                DisplayName = string.IsNullOrWhiteSpace(_newDisplayName) ? _newEmail.Trim() : _newDisplayName.Trim()
+            };
+
+            var result = await UserManager.CreateAsync(user, _newPassword);
+            if (!result.Succeeded)
+            {
+                _error = string.Join("; ", result.Errors.Select(x => x.Description));
+                return;
+            }
+
+            await UserManager.AddToRoleAsync(user, _newRole);
+
+            if (!string.Equals(_newRole, "Admin", StringComparison.Ordinal))
+            {
+                await GrantDefaultPagesAsync(user);
+            }
+
+            await Audit.LogAsync("user.create", $"Создан пользователь {user.Email} с ролью {_newRole}.");
+            _message = $"Пользователь {user.Email} создан.";
+            _newEmail = "";
+            _newDisplayName = "";
+            _newPassword = "";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void TogglePermissions(ApplicationUser user)
+    {
+        _message = null;
+        _error = null;
+        _permissionsUserId = _permissionsUserId == user.Id ? null : user.Id;
+    }
+
+    private void ClosePermissions()
+    {
+        _permissionsUserId = null;
+    }
+
+    private async Task TogglePageAsync(ApplicationUser user, string pageKey, bool granted)
+    {
+        _busy = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            var claims = await UserManager.GetClaimsAsync(user);
+            var existing = claims.FirstOrDefault(x => x.Type == AdminPageAccess.ClaimType && x.Value == pageKey);
+
+            if (granted && existing is null)
+            {
+                await UserManager.AddClaimAsync(user, new Claim(AdminPageAccess.ClaimType, pageKey));
+                await UserManager.UpdateSecurityStampAsync(user);
+                await Audit.LogAsync("user.page.grant", $"{user.Email}: выдан доступ к «{pageKey}».");
+            }
+            else if (!granted && existing is not null)
+            {
+                await UserManager.RemoveClaimAsync(user, existing);
+                await UserManager.UpdateSecurityStampAsync(user);
+                await Audit.LogAsync("user.page.revoke", $"{user.Email}: снят доступ к «{pageKey}».");
+            }
+
+            await LoadAsync();
+            _message = "Права обновлены.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task GrantDefaultPagesAsync(ApplicationUser user)
+    {
+        var claims = await UserManager.GetClaimsAsync(user);
+
+        foreach (var pageKey in DefaultManagerPages)
+        {
+            if (!claims.Any(x => x.Type == AdminPageAccess.ClaimType && x.Value == pageKey))
+            {
+                await UserManager.AddClaimAsync(user, new Claim(AdminPageAccess.ClaimType, pageKey));
+            }
+        }
+    }
+
+    private async Task AddAdminAsync(ApplicationUser user)
+    {
+        await ChangeRoleAsync(user, "Admin", true);
+    }
+
+    private async Task RemoveAdminAsync(ApplicationUser user)
+    {
+        await ChangeRoleAsync(user, "Admin", false);
+    }
+
+    private async Task ChangeRoleAsync(ApplicationUser user, string role, bool add)
+    {
+        _busy = true;
+        _message = null;
+        _error = null;
+
+        try
+        {
+            if (add)
+            {
+                await UserManager.AddToRoleAsync(user, role);
+            }
+            else
+            {
+                await UserManager.RemoveFromRoleAsync(user, role);
+                await GrantDefaultPagesAsync(user);
+            }
+
+            await UserManager.UpdateSecurityStampAsync(user);
+            await Audit.LogAsync("user.role", $"{(add ? "Выдана" : "Снята")} роль {role} для {user.Email}.");
+            _message = "Роли обновлены.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private sealed record UserRow(ApplicationUser User, List<string> Roles, List<string> PageKeys)
+    {
+        public bool IsAdmin => Roles.Contains("Admin");
+    }
+
+    private static string RoleLabel(string role) => role switch
+    {
+        "Admin" => "Администратор",
+        "Manager" => "Менеджер",
+        _ => role
+    };
+}
+

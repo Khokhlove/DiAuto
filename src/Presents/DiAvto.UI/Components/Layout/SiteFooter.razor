@@ -1,0 +1,68 @@
+@inject ISiteSettingsService SettingsService
+@inject IOfficeService OfficeService
+
+<footer class="site-footer">
+    <div class="container footer-grid">
+        <div class="footer-brand">
+            <a class="brand brand-light" href="/">
+                <img src="/logo.webp" alt="ДИ.авто" width="52" height="38" />
+                <span class="brand-copy">
+                    <strong>ДИ.авто</strong>
+                    <small>импорт автомобилей из Азии</small>
+                </span>
+            </a>
+            <p>Подбор, проверка, выкуп и доставка автомобилей из Японии, Кореи и Китая под ключ.</p>
+            <div class="footer-socials">
+                <a href="@_settings.WhatsAppUrl" target="_blank" rel="noopener" aria-label="WhatsApp">WA</a>
+                <a href="@_settings.TelegramUrl" target="_blank" rel="noopener" aria-label="Telegram">TG</a>
+                <a href="@_settings.VkUrl" target="_blank" rel="noopener" aria-label="VK">VK</a>
+                <a href="@_settings.MaxUrl" target="_blank" rel="noopener" aria-label="MAX">MAX</a>
+            </div>
+        </div>
+
+        <div class="footer-col">
+            <h3>Навигация</h3>
+            @foreach (var link in SiteContent.NavLinks)
+            {
+                <a href="@link.Url">@link.Label</a>
+            }
+        </div>
+
+        <div class="footer-col">
+            <h3>Офисы</h3>
+            @foreach (var office in _offices)
+            {
+                <span><strong>@office.City</strong><br />@office.Address</span>
+            }
+        </div>
+
+        <div class="footer-col">
+            <h3>Контакты</h3>
+            <a href="@_settings.PhoneHref">@_settings.Phone</a>
+            @if (!string.IsNullOrWhiteSpace(_settings.Phone2))
+            {
+                <a href="@_settings.Phone2Href">@_settings.Phone2</a>
+            }
+            <a href="@_settings.EmailHref">@_settings.Email</a>
+            <span>Пн–Пт: 09:00–19:00<br />Сб–Вс: выходной</span>
+        </div>
+    </div>
+
+    <div class="container footer-bottom">
+        <span>© @DateTime.Now.Year @_settings.CompanyName · @_settings.CompanyTagline</span>
+        <a href="/privacy-policy">Политика конфиденциальности</a>
+    </div>
+</footer>
+
+@code {
+    private SiteSettingsDto _settings = new(
+        SiteContent.CompanyName, SiteContent.CompanyTagline, SiteContent.Phone, SiteContent.Phone2,
+        SiteContent.Email, SiteContent.WhatsAppUrl, SiteContent.TelegramUrl, SiteContent.VkUrl, SiteContent.MaxUrl);
+    private IReadOnlyList<OfficeDto> _offices = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _settings = await SettingsService.GetAsync();
+        _offices = await OfficeService.GetActiveAsync();
+    }
+}

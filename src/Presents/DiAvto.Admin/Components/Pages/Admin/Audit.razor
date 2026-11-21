@@ -1,0 +1,56 @@
+@page "/admin/audit"
+@attribute [Authorize(Policy = "AdminPage.audit")]
+@rendermode InteractiveServer
+@inject AuditService AuditLogService
+
+<PageTitle>Журнал — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Система" Title="Журнал действий"
+            Description="Кто и когда менял настройки, запускал синхронизацию или обновлял данные." />
+
+<section class="panel">
+    <div class="panel-head">
+        <div><span class="eyebrow">События</span><h2>Последние 200 записей</h2></div>
+        <span class="badge-soft">@_items.Count</span>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-block compact"><span class="spinner"></span><p>Загружаем журнал…</p></div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead><tr><th>Время</th><th>Пользователь</th><th>Действие</th><th>Детали</th></tr></thead>
+                <tbody>
+                    @foreach (var item in _items)
+                    {
+                        <tr>
+                            <td class="muted">@DisplayFormat.Date(item.CreatedAt)</td>
+                            <td>@item.UserName</td>
+                            <td><span class="badge-soft mono">@item.Action</span></td>
+                            <td class="muted wrap">@item.Details</td>
+                        </tr>
+                    }
+                    @if (_items.Count == 0)
+                    {
+                        <tr><td colspan="4" class="table-empty">Пока нет записей.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private bool _loading = true;
+    private List<AdminAuditLog> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _items = await AuditLogService.GetRecentAsync(200);
+        _loading = false;
+    }
+}
+

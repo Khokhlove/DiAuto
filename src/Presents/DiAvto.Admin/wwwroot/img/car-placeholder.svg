@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Нет фотографии">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#eef1f4"/>
+      <stop offset="1" stop-color="#dfe4ea"/>
+    </linearGradient>
+    <linearGradient id="car" x1="0" x2="1">
+      <stop offset="0" stop-color="#b9c3ce"/>
+      <stop offset="1" stop-color="#8d99a6"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <circle cx="690" cy="110" r="120" fill="#ffffff" opacity=".35"/>
+  <circle cx="110" cy="520" r="170" fill="#ffffff" opacity=".25"/>
+  <g transform="translate(120 210) scale(1.15)">
+    <path d="M55 156c8-26 19-45 34-58 11-10 25-16 45-18l70-8c20-2 38 1 54 9l67 34c15 8 25 16 37 31l16 20c5 6 1 16-8 18l-37 8H88c-18 0-30-11-33-24z" fill="url(#car)"/>
+    <path d="M160 89c9-8 20-12 34-14l61-7c15-2 29 0 42 6l48 24c9 5 16 10 23 17H118c10-11 25-20 42-26z" fill="#3b4a5a"/>
+    <path d="M282 75l55 28c7 4 12 8 17 13h-97l-4-33z" fill="#4a5b6d" opacity=".85"/>
+    <circle cx="158" cy="174" r="34" fill="#2b3947"/>
+    <circle cx="158" cy="174" r="18" fill="#aeb9c5"/>
+    <circle cx="382" cy="174" r="34" fill="#2b3947"/>
+    <circle cx="382" cy="174" r="18" fill="#aeb9c5"/>
+  </g>
+  <text x="400" y="520" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" fill="#7f8b99">Фото недоступно</text>
+</svg>

@@ -1,0 +1,229 @@
+@page "/admin/leads"
+@attribute [Authorize(Policy = "AdminPage.leads")]
+@rendermode InteractiveServer
+@inject DiAvtoDbContext Db
+@inject AuditService Audit
+
+<PageTitle>Заявки — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Публичный сайт" Title="Заявки"
+            Description="Обращения с форм на di-auto.ru: имя, телефон, источник и комментарий менеджера." />
+
+@if (_message is not null)
+{
+    <div class="alert alert-success" role="alert">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <span class="eyebrow">Обращения</span>
+            <h2>Все заявки</h2>
+        </div>
+        <div class="panel-head-actions">
+            <select class="form-control form-control-sm" @bind="_filter" @bind:after="LoadAsync">
+                <option value="new">Новые</option>
+                <option value="all">Все</option>
+                <option value="processed">Обработанные</option>
+            </select>
+            <span class="badge-soft">@_leads.Count</span>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-block compact"><span class="spinner"></span><p>Загружаем заявки…</p></div>
+    }
+    else if (_leads.Count == 0)
+    {
+        <EmptyState Title="Заявок нет" Description="Когда клиент отправит форму, заявка появится здесь." Icon="📨" />
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table data-table-wide">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>Клиент</th>
+                        <th>Телефон</th>
+                        <th>Источник</th>
+                        <th>Сообщение</th>
+                        <th>Статус</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var lead in _leads)
+                    {
+                        <tr>
+                            <td class="muted">@DisplayFormat.DateLocal(lead.CreatedAt)</td>
+                            <td><strong>@lead.Name</strong></td>
+                            <td><a href="tel:@lead.Phone">@lead.Phone</a></td>
+                            <td>@lead.Source</td>
+                            <td>@Shorten(lead.Message, 100)</td>
+                            <td>
+                                <span class="status-badge @(lead.IsProcessed ? "status-completed" : "status-pending")">
+                                    <span class="status-dot"></span>@(lead.IsProcessed ? "обработана" : "новая")
+                                </span>
+                            </td>
+                            <td class="table-actions">
+                                <button type="button" @onclick="() => Open(lead)">Открыть</button>
+                                <button type="button" @onclick="() => ToggleAsync(lead)">
+                                    @(lead.IsProcessed ? "Вернуть в новые" : "Обработать")
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@if (_edit is not null)
+{
+    <section class="panel">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">Заявка</span>
+                <h2>@_edit.Name</h2>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _edit = null">Закрыть</button>
+        </div>
+
+        <dl class="aside-list">
+            <div><dt>Телефон</dt><dd><a href="tel:@_edit.Phone">@_edit.Phone</a></dd></div>
+            <div><dt>Источник</dt><dd>@_edit.Source</dd></div>
+            <div><dt>Создана</dt><dd>@DisplayFormat.DateLocal(_edit.CreatedAt)</dd></div>
+            <div><dt>Сообщение</dt><dd>@(string.IsNullOrWhiteSpace(_edit.Message) ? "—" : _edit.Message)</dd></div>
+        </dl>
+
+        <div class="form-grid">
+            <div class="form-field span-2">
+                <label>Комментарий менеджера</label>
+                <textarea class="form-control" rows="4" @bind="_edit.ManagerComment"></textarea>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <label class="checkbox-row"><input type="checkbox" @bind="_edit.IsProcessed" /> Обработана</label>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">Сохранить</button>
+        </div>
+    </section>
+}
+
+@code {
+    private List<Lead> _leads = [];
+    private Lead? _edit;
+    private string _filter = "new";
+    private string? _message;
+    private string? _error;
+    private bool _loading = true;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            var query = Db.Leads.AsNoTracking().AsQueryable();
+
+            query = _filter switch
+            {
+                "processed" => query.Where(x => x.IsProcessed),
+                "all" => query,
+                _ => query.Where(x => !x.IsProcessed)
+            };
+
+            _leads = await query
+                .OrderByDescending(x => x.CreatedAt)
+                .Take(300)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void Open(Lead lead)
+    {
+        _message = null;
+        _error = null;
+        _edit = lead;
+    }
+
+    private async Task ToggleAsync(Lead lead)
+    {
+        try
+        {
+            var entity = await Db.Leads.FirstAsync(x => x.Id == lead.Id);
+            entity.IsProcessed = !entity.IsProcessed;
+            entity.ProcessedAt = entity.IsProcessed ? DateTime.UtcNow : null;
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("lead.status",
+                $"Заявка #{entity.Id} ({entity.Name}): {(entity.IsProcessed ? "обработана" : "возвращена в новые")}.");
+            _message = entity.IsProcessed ? "Заявка отмечена обработанной." : "Заявка возвращена в новые.";
+            _edit = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_edit is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+
+        try
+        {
+            var entity = await Db.Leads.FirstAsync(x => x.Id == _edit.Id);
+            entity.ManagerComment = _edit.ManagerComment;
+            entity.IsProcessed = _edit.IsProcessed;
+            entity.ProcessedAt = _edit.IsProcessed ? entity.ProcessedAt ?? DateTime.UtcNow : null;
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("lead.update", $"Заявка #{entity.Id} ({entity.Name}) обновлена.");
+            _message = "Заявка сохранена.";
+            _edit = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private static string Shorten(string? value, int length) =>
+        string.IsNullOrWhiteSpace(value)
+            ? "—"
+            : value.Length <= length
+                ? value
+                : value[..length].TrimEnd() + "…";
+}

@@ -1,0 +1,340 @@
+@page "/card/{PublicId}"
+@layout DiAvto.Site.Components.Layout.ClientCardLayout
+@inject IClientCardPublicService CardService
+@inject IJSRuntime JS
+
+<PageTitle>@(_card?.Title ?? "Предложение") — ДИ.авто</PageTitle>
+
+@if (_loading)
+{
+    <div class="container page-pad">
+        <div class="loading">Загружаем предложение…</div>
+    </div>
+}
+else if (_card is null)
+{
+    <div class="container page-pad">
+        <div class="empty-state">
+            <h1>Предложение не найдено</h1>
+            <p>Возможно, ссылка была изменена или карточка больше не существует. Попросите менеджера отправить актуальную ссылку.</p>
+            <a class="btn btn-primary" href="/">На главную</a>
+        </div>
+    </div>
+}
+else if (!_card.IsActive)
+{
+    <div class="container page-pad">
+        <div class="empty-state">
+            <h1>Предложение недоступно</h1>
+            <p>Эта карточка была отключена менеджером. Свяжитесь с нами, чтобы получить актуальное предложение.</p>
+            @if (_card.HasContactText)
+            {
+                <span class="client-contact-line">@_card.ContactText</span>
+            }
+            <a class="btn btn-primary" href="/contacts">Связаться с нами</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="client-card-page">
+        <section class="client-card-hero">
+            <div class="container">
+                <div class="client-card-hero-grid">
+                    <div class="client-card-hero-copy">
+                        <div class="client-card-tags">
+                            <span class="client-tag">Страна: @_card.CountryName</span>
+                            @if (!string.IsNullOrWhiteSpace(_card.CityName))
+                            {
+                                <span class="client-tag">Город: @_card.CityName</span>
+                            }
+                            @if (_card.Year is not null)
+                            {
+                                <span class="client-tag">@_card.Year</span>
+                            }
+                            @if (_card.IsNewEnergy)
+                            {
+                                <span class="client-tag client-tag-green">Электро / гибрид</span>
+                            }
+                        </div>
+
+                        <h1>@_card.Title</h1>
+
+                        <p class="client-card-hero-sub">
+                            @_card.Mileage
+                            @if (_card.Displacement != "—")
+                            {
+                                <span>· @_card.Displacement</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(_card.Gearbox))
+                            {
+                                <span>· @_card.Gearbox</span>
+                            }
+                        </p>
+
+                        @if (!string.IsNullOrWhiteSpace(_card.CustomerName))
+                        {
+                            <span class="client-prepared-for">Подготовлено для: <strong>@_card.CustomerName</strong></span>
+                        }
+                    </div>
+
+                    <div class="client-total-card">
+                        <span class="client-total-label">Стоимость под ключ</span>
+                        <strong class="client-total-value">@DisplayFormat.RubExact(_card.TotalRub)</strong>
+                        <span class="client-total-hint">
+                            @if (_card.HasCityDelivery)
+                            {
+                                <text>Включены автомобиль, осмотр, доставка до Владивостока, доставка до города
+                                @_card.DestinationCity, таможенное оформление, брокер, лаборатория и комиссии.</text>
+                            }
+                            else
+                            {
+                                <text>Включены автомобиль, осмотр, доставка до Владивостока, таможенное оформление,
+                                брокер, лаборатория и комиссии.</text>
+                            }
+                        </span>
+                        <div class="client-total-meta">
+                            <span>Сформировано: <strong>@DisplayFormat.DateLocal(_card.CreatedAt)</strong></span>
+                            <span>Курс расчёта: <strong>1 ¥ = @DisplayFormat.RubRate(_card.EffectiveRate)</strong></span>
+                            @if (_card.MarkupPercent > 0)
+                            {
+                                <small>
+                                    курс ЦБ @DisplayFormat.RubRate(_card.ExchangeRate) + наценка
+                                    @DisplayFormat.Percent(_card.MarkupPercent)
+                                </small>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="container client-card-content">
+            <div class="client-card-layout">
+                <div class="client-card-main">
+                    <div class="car-gallery client-gallery">
+                        <button type="button" class="gallery-main" @onclick="OpenLightbox" aria-label="Открыть фото">
+                            <img src="@_mainImage" alt="@_card.Title" />
+                            @if (_card.PhotoUrls.Count > 1)
+                            {
+                                <span class="gallery-hint">Нажмите, чтобы увеличить · @_card.PhotoUrls.Count фото</span>
+                            }
+                        </button>
+
+                        @if (_card.PhotoUrls.Count > 1)
+                        {
+                            <div class="gallery-thumbs">
+                                @for (var i = 0; i < _card.PhotoUrls.Count; i++)
+                                {
+                                    var index = i;
+                                    var url = _card.PhotoUrls[index];
+                                    <button type="button" class="gallery-thumb @(url == _mainImage ? "active" : "")"
+                                            @onclick="() => _mainImage = url" aria-label="Фото @(index + 1)">
+                                        <img src="@url" alt="Фото @(index + 1)" loading="lazy" />
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <section class="detail-section client-spec-section">
+                        <div class="detail-section-head">
+                            <h2>Характеристики автомобиля</h2>
+                            <span>@_card.Specs.Count параметров</span>
+                        </div>
+                        <div class="spec-grid">
+                            @foreach (var spec in _card.Specs)
+                            {
+                                <div class="spec-row">
+                                    <span>@spec.Label</span>
+                                    <strong>@spec.Value</strong>
+                                </div>
+                            }
+                        </div>
+                    </section>
+
+                    @if (_card.PhotoUrls.Count > 1)
+                    {
+                        <section class="detail-section">
+                            <div class="detail-section-head">
+                                <h2>Фотографии</h2>
+                                <span>@_card.PhotoUrls.Count</span>
+                            </div>
+                            <div class="photo-grid client-photo-grid">
+                                @for (var i = 0; i < _card.PhotoUrls.Count; i++)
+                                {
+                                    var index = i;
+                                    <button type="button" class="photo-grid-item" @onclick="() => OpenLightboxAt(index)"
+                                            aria-label="Открыть фото @(index + 1)">
+                                        <img src="@_card.PhotoUrls[index]" alt="Фото @(index + 1)" loading="lazy" />
+                                    </button>
+                                }
+                            </div>
+                        </section>
+                    }
+                </div>
+
+                <aside class="client-card-aside">
+                    <section class="client-info-card">
+                        <span class="eyebrow">Автомобиль</span>
+                        <dl class="aside-list">
+                            <div><dt>Страна нахождения</dt><dd><strong>@_card.CountryName</strong></dd></div>
+                            @if (!string.IsNullOrWhiteSpace(_card.CityName))
+                            {
+                                <div><dt>Город</dt><dd>@_card.CityName</dd></div>
+                            }
+                            <div><dt>Год выпуска</dt><dd>@(_card.Year?.ToString() ?? "—")</dd></div>
+                            <div><dt>Пробег</dt><dd>@_card.Mileage</dd></div>
+                            <div><dt>Коробка</dt><dd>@Display(_card.Gearbox)</dd></div>
+                            <div><dt>Топливо</dt><dd>@Display(_card.FuelType)</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="client-included-card">
+                        <span class="eyebrow">Включено в стоимость</span>
+                        <ul>
+                            <li>Автомобиль</li>
+                            <li>Осмотр автомобиля</li>
+                            <li>Доставка до Владивостока</li>
+                            @if (_card.HasCityDelivery)
+                            {
+                                <li>Доставка из Владивостока: @_card.DestinationCity</li>
+                            }
+                            <li>Таможенное оформление</li>
+                            <li>Брокер и лаборатория</li>
+                            <li>Комиссия и банковский перевод</li>
+                        </ul>
+                        <p>Итоговая стоимость уже включает все перечисленные услуги.</p>
+                    </section>
+
+                    @if (!string.IsNullOrWhiteSpace(_card.Note))
+                    {
+                        <section class="client-note-card">
+                            <span class="eyebrow">Комментарий менеджера</span>
+                            <p>@_card.Note</p>
+                        </section>
+                    }
+
+                    <section class="client-contact-card">
+                        <span class="eyebrow">Связаться с нами</span>
+                        @if (_card.HasContactText)
+                        {
+                            <p class="client-contact-text">@_card.ContactText</p>
+                        }
+                        else
+                        {
+                            <p class="muted">Свяжитесь с вашим менеджером, чтобы уточнить детали и оформить покупку.</p>
+                        }
+                        <a class="btn btn-outline btn-block" href="/contacts">Перейти к контактам</a>
+                        <button type="button" class="btn btn-ghost-light btn-block" @onclick="PrintAsync">
+                            Распечатать карточку
+                        </button>
+                    </section>
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    @if (_lightboxOpen && _card is not null)
+    {
+        <div class="lightbox" role="dialog" aria-modal="true" aria-label="Просмотр фотографий">
+            <button type="button" class="lightbox-close" @onclick="CloseLightbox" aria-label="Закрыть">×</button>
+            <button type="button" class="lightbox-nav lightbox-prev" @onclick="PreviousPhoto" aria-label="Назад">‹</button>
+            <img src="@_card.PhotoUrls[_lightboxIndex]" alt="Фотография автомобиля" />
+            <button type="button" class="lightbox-nav lightbox-next" @onclick="NextPhoto" aria-label="Вперёд">›</button>
+            <span class="lightbox-counter">@(_lightboxIndex + 1) / @_card.PhotoUrls.Count</span>
+        </div>
+    }
+}
+
+@code {
+    [Parameter]
+    public string PublicId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private ClientCardPublicDto? _card;
+    private string _mainImage = "/images/car-placeholder.svg";
+    private bool _lightboxOpen;
+    private int _lightboxIndex;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            _card = await CardService.GetAsync(PublicId);
+        }
+        catch
+        {
+            _card = null;
+        }
+
+        _mainImage = _card?.MainPhotoUrl ?? "/images/car-placeholder.svg";
+        _lightboxOpen = false;
+        _loading = false;
+    }
+
+    private void OpenLightbox()
+    {
+        if (_card is null)
+        {
+            return;
+        }
+
+        _lightboxIndex = 0;
+        for (var i = 0; i < _card.PhotoUrls.Count; i++)
+        {
+            if (_card.PhotoUrls[i] == _mainImage)
+            {
+                _lightboxIndex = i;
+                break;
+            }
+        }
+
+        _lightboxOpen = true;
+    }
+
+    private void OpenLightboxAt(int index)
+    {
+        if (_card is null)
+        {
+            return;
+        }
+
+        _lightboxIndex = Math.Clamp(index, 0, _card.PhotoUrls.Count - 1);
+        _lightboxOpen = true;
+    }
+
+    private void CloseLightbox() => _lightboxOpen = false;
+
+    private void PreviousPhoto()
+    {
+        if (_card is null || _card.PhotoUrls.Count == 0)
+        {
+            return;
+        }
+
+        _lightboxIndex = _lightboxIndex <= 0 ? _card.PhotoUrls.Count - 1 : _lightboxIndex - 1;
+    }
+
+    private void NextPhoto()
+    {
+        if (_card is null || _card.PhotoUrls.Count == 0)
+        {
+            return;
+        }
+
+        _lightboxIndex = _lightboxIndex >= _card.PhotoUrls.Count - 1 ? 0 : _lightboxIndex + 1;
+    }
+
+    private async Task PrintAsync()
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
+
+    private static string Display(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) || value == "—" ? "—" : value;
+    }
+}

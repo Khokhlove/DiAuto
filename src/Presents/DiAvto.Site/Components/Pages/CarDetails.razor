@@ -1,0 +1,99 @@
+@page "/catalog/{Id:int}"
+@inject IShowcaseCarService Cars
+
+<PageTitle>@(_car?.Name ?? "Автомобиль") — ДИ.авто</PageTitle>
+
+@if (_car is null)
+{
+    <div class="container page-pad">
+        <div class="empty-state">
+            <h1>Автомобиль не найден</h1>
+            <p>Возможно, объявление было снято с публикации.</p>
+            <a class="btn btn-primary" href="/catalog">Вернуться в каталог</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container page-pad">
+        <div class="breadcrumbs"><a href="/">Главная</a> / <a href="/catalog">Каталог</a> / <span>@_car.Name</span></div>
+
+        <div class="detail-head">
+            <div>
+                <span class="eyebrow">@_car.Country · @_car.Year</span>
+                <h1>@_car.Name</h1>
+                <p>@_car.Engine · @_car.Transmission · @_car.Drive · @SiteFormat.Mileage(_car.MileageKm)</p>
+            </div>
+            <div class="detail-price">
+                <strong>@SiteFormat.Money(_car.PriceRub)</strong>
+                <span>@SiteContent.CarPriceDisclaimer</span>
+                <a class="btn btn-primary btn-block" href="#lead">Оставить заявку</a>
+            </div>
+        </div>
+
+        <div class="detail-layout">
+            <div>
+                <div class="gallery-main">
+                    <img src="@_mainImage" alt="@_car.Name" />
+                </div>
+                @if (_car.ImageUrls.Count > 1)
+                {
+                    <div class="gallery-thumbs">
+                        @foreach (var image in _car.ImageUrls)
+                        {
+                            var url = image;
+                            <button type="button" class="gallery-thumb @(url == _mainImage ? "active" : "")"
+                                    @onclick="() => _mainImage = url">
+                                <img src="@url" alt="@_car.Name" loading="lazy" />
+                            </button>
+                        }
+                    </div>
+                }
+
+                <section class="detail-section">
+                    <h2>Характеристики</h2>
+                    <div class="spec-grid">
+                        <div><span>Марка</span><strong>@_car.Make</strong></div>
+                        <div><span>Год</span><strong>@_car.Year</strong></div>
+                        <div><span>Кузов</span><strong>@_car.BodyType</strong></div>
+                        <div><span>Двигатель</span><strong>@_car.Engine</strong></div>
+                        <div><span>Коробка</span><strong>@_car.Transmission</strong></div>
+                        <div><span>Привод</span><strong>@_car.Drive</strong></div>
+                        <div><span>Топливо</span><strong>@_car.Fuel</strong></div>
+                        <div><span>Пробег</span><strong>@SiteFormat.Mileage(_car.MileageKm)</strong></div>
+                        <div><span>Страна</span><strong>@_car.Country</strong></div>
+                        <div><span>Наличие</span><strong>@(_car.InStock ? "В наличии" : "Под заказ")</strong></div>
+                    </div>
+                </section>
+
+                @if (!string.IsNullOrWhiteSpace(_car.Description))
+                {
+                    <section class="detail-section">
+                        <h2>Описание</h2>
+                        <p>@_car.Description</p>
+                    </section>
+                }
+            </div>
+
+            <aside class="detail-side">
+                <section class="lead-card" id="lead">
+                    <h2>Запросить этот автомобиль</h2>
+                    <LeadForm Source="car-detail" ButtonText="Запросить автомобиль" />
+                </section>
+            </aside>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private ShowcaseCarDto? _car;
+    private string _mainImage = "/images/car-placeholder.svg";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _car = await Cars.GetByIdAsync(Id);
+        _mainImage = _car?.MainImageUrl ?? "/images/car-placeholder.svg";
+    }
+}

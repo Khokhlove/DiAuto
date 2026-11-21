@@ -1,0 +1,293 @@
+@page "/admin/reviews"
+@attribute [Authorize(Policy = "AdminPage.reviews")]
+@rendermode InteractiveServer
+@inject DiAvtoDbContext Db
+@inject AuditService Audit
+@inject IJSRuntime JS
+
+<PageTitle>Отзывы — DiAvto · Админка</PageTitle>
+
+<PageHeader Eyebrow="Публичный сайт" Title="Отзывы"
+            Description="Текстовые отзывы, скриншоты и видео на странице «Отзывы».">
+    <Actions>
+        <button class="btn btn-primary btn-sm" @onclick="StartCreate">Добавить отзыв</button>
+    </Actions>
+</PageHeader>
+
+@if (_message is not null)
+{
+    <div class="alert alert-success" role="alert">@_message</div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <span class="eyebrow">Контент</span>
+            <h2>Все отзывы</h2>
+        </div>
+        <span class="badge-soft">@_reviews.Count</span>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-block compact"><span class="spinner"></span><p>Загружаем отзывы…</p></div>
+    }
+    else if (_reviews.Count == 0)
+    {
+        <EmptyState Title="Отзывов нет" Description="Добавьте первый отзыв." Icon="💬" />
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table data-table-wide">
+                <thead>
+                    <tr>
+                        <th>Автор</th>
+                        <th>Тип</th>
+                        <th>Текст</th>
+                        <th>Оценка</th>
+                        <th>Видимость</th>
+                        <th>Порядок</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var review in _reviews)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@(string.IsNullOrWhiteSpace(review.AuthorName) ? "Без имени" : review.AuthorName)</strong>
+                                <small class="muted">@review.City</small>
+                            </td>
+                            <td>@TypeTitle(review.Type)</td>
+                            <td>@Shorten(review.Text, 90)</td>
+                            <td>@(review.Rating is null ? "—" : review.Rating + " ★")</td>
+                            <td>
+                                <button type="button" class="status-badge @(review.IsVisible ? "status-completed" : "status-failed")"
+                                        @onclick="() => ToggleAsync(review)">
+                                    <span class="status-dot"></span>@(review.IsVisible ? "виден" : "скрыт")
+                                </button>
+                            </td>
+                            <td>@review.SortOrder</td>
+                            <td class="table-actions">
+                                <button type="button" @onclick="() => StartEdit(review)">Изменить</button>
+                                <button type="button" class="danger" @onclick="() => DeleteAsync(review)">Удалить</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@if (_edit is not null)
+{
+    <section class="panel">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">Редактирование</span>
+                <h2>@(_edit.Id == 0 ? "Новый отзыв" : _edit.AuthorName ?? "Отзыв")</h2>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">Закрыть</button>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-field">
+                <label>Тип</label>
+                <select class="form-control" @bind="_edit.Type">
+                    <option value="text">Текстовый</option>
+                    <option value="screenshot">Скриншот</option>
+                    <option value="video">Видео</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label>Оценка</label>
+                <input class="form-control" type="number" min="0" max="5" @bind="_edit.Rating" />
+            </div>
+            <div class="form-field">
+                <label>Автор</label>
+                <input class="form-control" @bind="_edit.AuthorName" />
+            </div>
+            <div class="form-field">
+                <label>Город</label>
+                <input class="form-control" @bind="_edit.City" />
+            </div>
+            <div class="form-field">
+                <label>Источник</label>
+                <input class="form-control" @bind="_edit.Source" placeholder="Яндекс, 2ГИС, Avito" />
+            </div>
+            <div class="form-field">
+                <label>Порядок сортировки</label>
+                <input class="form-control" type="number" @bind="_edit.SortOrder" />
+            </div>
+            <div class="form-field span-2">
+                <label>Текст отзыва</label>
+                <textarea class="form-control" rows="5" @bind="_edit.Text"></textarea>
+            </div>
+            <div class="form-field span-2">
+                <label>Ссылка на скриншот</label>
+                <input class="form-control mono" @bind="_edit.ScreenshotUrl" placeholder="/images/reviews/..." />
+            </div>
+            <div class="form-field">
+                <label>Ссылка на видео</label>
+                <input class="form-control mono" @bind="_edit.VideoUrl" />
+            </div>
+            <div class="form-field">
+                <label>Заголовок видео</label>
+                <input class="form-control" @bind="_edit.VideoTitle" />
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <label class="checkbox-row"><input type="checkbox" @bind="_edit.IsVisible" /> Показывать на сайте</label>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">Сохранить</button>
+            <button class="btn btn-outline-secondary" @onclick="CancelEdit">Отмена</button>
+        </div>
+    </section>
+}
+
+@code {
+    private List<Review> _reviews = [];
+    private Review? _edit;
+    private string? _message;
+    private string? _error;
+    private bool _loading = true;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _reviews = await Db.Reviews
+            .AsNoTracking()
+            .OrderBy(x => x.SortOrder)
+            .ThenByDescending(x => x.CreatedAt)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void StartCreate()
+    {
+        _message = null;
+        _error = null;
+        _edit = new Review
+        {
+            Type = "text",
+            IsVisible = true,
+            SortOrder = (_reviews.Count == 0 ? 0 : _reviews.Max(x => x.SortOrder)) + 1,
+            CreatedAt = DateTime.UtcNow
+        };
+    }
+
+    private void StartEdit(Review review)
+    {
+        _message = null;
+        _error = null;
+        _edit = review;
+    }
+
+    private void CancelEdit() => _edit = null;
+
+    private async Task SaveAsync()
+    {
+        if (_edit is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            if (_edit.Id == 0)
+            {
+                Db.Reviews.Add(_edit);
+            }
+            else
+            {
+                Db.Reviews.Update(_edit);
+            }
+
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("review.save", $"Отзыв «{_edit.AuthorName ?? "без имени"}» сохранён.");
+            _message = "Отзыв сохранён.";
+            _edit = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ToggleAsync(Review review)
+    {
+        try
+        {
+            var entity = await Db.Reviews.FirstAsync(x => x.Id == review.Id);
+            entity.IsVisible = !entity.IsVisible;
+            await Db.SaveChangesAsync();
+            _message = entity.IsVisible ? "Отзыв показан на сайте." : "Отзыв скрыт.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task DeleteAsync(Review review)
+    {
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Удалить отзыв «{review.AuthorName ?? "без имени"}»?");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            var entity = await Db.Reviews.FirstAsync(x => x.Id == review.Id);
+            Db.Reviews.Remove(entity);
+            await Db.SaveChangesAsync();
+            await Audit.LogAsync("review.delete", $"Отзыв «{review.AuthorName ?? "без имени"}» удалён.");
+            _message = "Отзыв удалён.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static string TypeTitle(string type) => type switch
+    {
+        "screenshot" => "Скриншот",
+        "video" => "Видео",
+        _ => "Текст"
+    };
+
+    private static string Shorten(string? value, int length) =>
+        string.IsNullOrWhiteSpace(value)
+            ? "—"
+            : value.Length <= length
+                ? value
+                : value[..length].TrimEnd() + "…";
+}

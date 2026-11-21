@@ -1,0 +1,6 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>DiAvto.Domain</RootNamespace>
+    <AssemblyName>DiAvto.Domain</AssemblyName>
+  </PropertyGroup>
+</Project>

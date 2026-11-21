@@ -1,0 +1,12 @@
+global using DiAvto.Application.Access;
+global using DiAvto.Application.Catalog;
+global using DiAvto.Application.Formatting;
+global using DiAvto.Application.Pricing;
+global using DiAvto.Application.Search;
+global using DiAvto.Admin.Features.Pricing;
+global using DiAvto.Admin.Features.Search;
+global using DiAvto.Domain;
+global using DiAvto.Infrastructure.Auth;
+global using DiAvto.Infrastructure.Marketplaces.Che168;
+global using DiAvto.Infrastructure.Persistence;
+global using DiAvto.UI.Formatting;
